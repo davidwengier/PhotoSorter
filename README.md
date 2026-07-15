@@ -77,14 +77,9 @@ The published app is written to `artifacts\publish\win-x64`.
 
 ## Releases and automatic updates
 
-Push a stable semantic-version tag to build and publish a release:
+Every push to `main` publishes the next minor release automatically. The persistent GitHub Actions run number produces versions `v0.1.0`, `v0.2.0`, `v0.3.0`, and so on; the workflow creates the corresponding tag without changing source files.
 
-```powershell
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The `Release` GitHub Actions workflow runs the tests, creates a self-contained Windows x64 build, packages it with Velopack, and publishes `PhotoSorter-win-Setup.exe` plus the supporting update assets directly to GitHub Releases.
+The `Release` workflow runs the tests, creates a self-contained Windows x64 build, packages it with Velopack, and publishes `PhotoSorter-win-Setup.exe` plus the supporting update assets directly to GitHub Releases.
 
 Copies installed through `PhotoSorter-win-Setup.exe` check the public GitHub repository at startup. An available update downloads in the background and appears as a **Restart to update** banner. Closing and reopening PhotoSorter also applies a downloaded update. Development builds launched with `dotnet run` do not check for updates.
 

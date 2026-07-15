@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -27,11 +27,7 @@ jobs:
         id: versions
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
-          $version = $tag.Substring(1)
-          if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
-              throw "Release tag '$tag' must use the form v1.2.3."
-          }
+          $version = "0.${{ github.run_number }}.0"
 
           [xml] $packages = Get-Content .\Directory.Packages.props
           $velopack = $packages.Project.ItemGroup.PackageVersion |
@@ -92,7 +88,8 @@ jobs:
               --token $env:VELOPACK_TOKEN `
               --publish `
               --releaseName "PhotoSorter $version" `
-              --tag "${{ github.ref_name }}"
+              --tag "v$version" `
+              --targetCommitish "${{ github.sha }}"
           if ($LASTEXITCODE -ne 0) {
               throw "Velopack could not publish the GitHub release."
           }
