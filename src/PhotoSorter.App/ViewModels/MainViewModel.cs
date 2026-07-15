@@ -27,6 +27,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly IReverseGeocoder _reverseGeocoder;
     private readonly IRecentRootStore _recentRootStore;
     private readonly IUserDialogService _dialogs;
+    private readonly IAppUpdateService _appUpdateService;
     private readonly ILogger<MainViewModel> _logger;
     private readonly Dictionary<string, HashSet<string>> _excludedBundles = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _destinationDrafts = new(StringComparer.Ordinal);
@@ -35,6 +36,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private CancellationTokenSource? _scanCancellation;
     private CancellationTokenSource? _namingCancellation;
+    private readonly CancellationTokenSource _updateCancellation = new();
     private MediaScanResult? _scanResult;
     private PhotoSorterState? _state;
 
@@ -80,6 +82,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _emptyStateMessage = "Choose a Pictures folder to find photo groups.";
 
+    [ObservableProperty]
+    private bool _isUpdateReady;
+
+    [ObservableProperty]
+    private string _updateMessage = string.Empty;
+
     public MainViewModel(
         ISharedStateStore stateStore,
         IMediaScanner mediaScanner,
@@ -91,6 +99,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         IReverseGeocoder reverseGeocoder,
         IRecentRootStore recentRootStore,
         IUserDialogService dialogs,
+        IAppUpdateService appUpdateService,
         ILogger<MainViewModel> logger)
     {
         _stateStore = stateStore;
@@ -103,6 +112,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _reverseGeocoder = reverseGeocoder;
         _recentRootStore = recentRootStore;
         _dialogs = dialogs;
+        _appUpdateService = appUpdateService;
         _logger = logger;
 
         YearFilters.Add(AllYears);
@@ -136,7 +146,29 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _scanCancellation?.Dispose();
         _namingCancellation?.Cancel();
         _namingCancellation?.Dispose();
+        _updateCancellation.Cancel();
+        _updateCancellation.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    public async Task CheckForUpdatesAsync()
+    {
+        try
+        {
+            var update = await _appUpdateService.DownloadLatestAsync(_updateCancellation.Token);
+            if (update is null)
+            {
+                return;
+            }
+
+            UpdateMessage =
+                $"PhotoSorter {update.Version} is ready. Restart when convenient to finish updating.";
+            IsUpdateReady = true;
+        }
+        catch (OperationCanceledException) when (_updateCancellation.IsCancellationRequested)
+        {
+            _logger.LogDebug("Update check was cancelled while PhotoSorter was closing.");
+        }
     }
 
     public async Task InitializeAsync()
@@ -177,6 +209,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private void CancelScan() => _scanCancellation?.Cancel();
+
+    [RelayCommand(CanExecute = nameof(CanRestartToUpdate))]
+    private void RestartToUpdate()
+    {
+        if (!_appUpdateService.ApplyAndRestart())
+        {
+            _dialogs.ShowError(
+                "PhotoSorter update",
+                "The downloaded update could not be started. Please close and reopen PhotoSorter to try again.");
+        }
+    }
+
+    private bool CanRestartToUpdate() => IsUpdateReady && !IsBusy;
 
     [RelayCommand]
     private async Task IgnoreCandidateAsync()
@@ -460,6 +505,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnSelectedYearFilterChanged(string value) => ApplyCandidateFilters();
 
     partial void OnDestinationFolderNameChanged(string value) => SaveCurrentDraft();
+
+    partial void OnIsBusyChanged(bool value) => RestartToUpdateCommand.NotifyCanExecuteChanged();
+
+    partial void OnIsUpdateReadyChanged(bool value) => RestartToUpdateCommand.NotifyCanExecuteChanged();
 
     partial void OnIsPhotoGridViewChanged(bool value) => OnPropertyChanged(nameof(IsPhotoListView));
 

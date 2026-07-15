@@ -26,7 +26,10 @@ public partial class MainWindow : Window
         }
 
         _initialized = true;
-        await ((MainViewModel)DataContext).InitializeAsync();
+        var viewModel = (MainViewModel)DataContext;
+        await Task.WhenAll(
+            viewModel.InitializeAsync(),
+            viewModel.CheckForUpdatesAsync());
     }
 
     private void OnPhotoPreviewClick(object sender, RoutedEventArgs eventArgs)

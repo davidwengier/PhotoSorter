@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Read release versions
+        id: versions
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.Substring(1)
+          if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
+              throw "Release tag '$tag' must use the form v1.2.3."
+          }
+
+          [xml] $packages = Get-Content .\Directory.Packages.props
+          $velopack = $packages.Project.ItemGroup.PackageVersion |
+              Where-Object Include -eq 'Velopack' |
+              Select-Object -First 1
+          if ($null -eq $velopack) {
+              throw 'Directory.Packages.props does not define Velopack.'
+          }
+
+          "app=$version" >> $env:GITHUB_OUTPUT
+          "velopack=$($velopack.Version)" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore .\PhotoSorter.slnx
+
+      - name: Test
+        run: dotnet test .\PhotoSorter.slnx --configuration Release --no-restore --nologo
+
+      - name: Publish application
+        shell: pwsh
+        run: |
+          .\scripts\publish.ps1 `
+              -OutputPath .\artifacts\publish\win-x64 `
+              -Version "${{ steps.versions.outputs.app }}"
+
+      - name: Install Velopack
+        run: dotnet tool install --global vpk --version "${{ steps.versions.outputs.velopack }}"
+
+      - name: Package and publish GitHub release
+        shell: pwsh
+        env:
+          VELOPACK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $repoUrl = "https://github.com/${{ github.repository }}"
+          $version = "${{ steps.versions.outputs.app }}"
+
+          vpk download github `
+              --repoUrl $repoUrl `
+              --token $env:VELOPACK_TOKEN
+          if ($LASTEXITCODE -ne 0) {
+              throw "Velopack could not download the previous release."
+          }
+
+          vpk pack `
+              --packId PhotoSorter `
+              --packVersion $version `
+              --packDir .\artifacts\publish\win-x64 `
+              --mainExe PhotoSorter.exe `
+              --packTitle PhotoSorter `
+              --icon .\src\PhotoSorter.App\Assets\PhotoSorter.ico `
+              --runtime win-x64
+          if ($LASTEXITCODE -ne 0) {
+              throw "Velopack packaging failed."
+          }
+
+          vpk upload github `
+              --repoUrl $repoUrl `
+              --token $env:VELOPACK_TOKEN `
+              --publish `
+              --releaseName "PhotoSorter $version" `
+              --tag "${{ github.ref_name }}"
+          if ($LASTEXITCODE -ne 0) {
+              throw "Velopack could not publish the GitHub release."
+          }

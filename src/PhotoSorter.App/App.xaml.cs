@@ -50,6 +50,7 @@ public partial class App : Application
         });
         builder.Services.AddSingleton<IReverseGeocoder, NominatimReverseGeocoder>();
         builder.Services.AddSingleton<IUserDialogService, UserDialogService>();
+        builder.Services.AddSingleton<IAppUpdateService, AppUpdateService>();
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddSingleton<MainWindow>();
 

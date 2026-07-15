@@ -1,5 +1,6 @@
 .vs/
 artifacts/
+Releases/
 **/bin/
 **/obj/
 TestResults/

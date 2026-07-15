@@ -141,6 +141,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="76" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="42" />
         </Grid.RowDefinitions>
@@ -210,7 +211,32 @@
                      Value="{Binding ProgressPercent}"
                      Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
-        <Grid Grid.Row="2" Margin="22,18">
+        <Border Grid.Row="2"
+                Margin="22,10,22,0"
+                Padding="14,10"
+                Background="{StaticResource AccentSoftBrush}"
+                CornerRadius="10"
+                Visibility="{Binding IsUpdateReady, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center"
+                          Foreground="{StaticResource AccentBrush}"
+                          FontWeight="SemiBold"
+                          Text="{Binding UpdateMessage}" />
+                <Button Grid.Column="1"
+                       Margin="16,0,0,0"
+                       Padding="13,7"
+                       MinHeight="34"
+                       Style="{StaticResource PrimaryButtonStyle}"
+                       Command="{Binding RestartToUpdateCommand}"
+                       Content="Restart to update" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="3" Margin="22,18">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="330" />
                 <ColumnDefinition Width="16" />
@@ -601,7 +627,7 @@
             </ScrollViewer>
         </Grid>
 
-        <Border Grid.Row="3"
+        <Border Grid.Row="4"
                 Padding="22,0"
                 Background="White"
                 BorderBrush="{StaticResource BorderBrush}"

@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string] $OutputPath = 'artifacts\publish\win-x64'
+    [string] $OutputPath = 'artifacts\publish\win-x64',
+    [string] $Version
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,12 +13,24 @@ else {
     [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot $OutputPath))
 }
 
-dotnet publish (Join-Path $repositoryRoot 'src\PhotoSorter.App\PhotoSorter.App.csproj') `
-    --configuration Release `
-    --runtime win-x64 `
-    --self-contained true `
-    --output $resolvedOutput `
-    --nologo
+$publishArguments = @(
+    'publish'
+    (Join-Path $repositoryRoot 'src\PhotoSorter.App\PhotoSorter.App.csproj')
+    '--configuration'
+    'Release'
+    '--runtime'
+    'win-x64'
+    '--self-contained'
+    'true'
+    '--output'
+    $resolvedOutput
+    '--nologo'
+)
+if (![string]::IsNullOrWhiteSpace($Version)) {
+    $publishArguments += "-p:Version=$Version"
+}
+
+& dotnet @publishArguments
 
 if ($LASTEXITCODE -ne 0) {
     throw "PhotoSorter publish failed with exit code $LASTEXITCODE."
