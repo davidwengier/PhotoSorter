@@ -1,0 +1,635 @@
+<Window x:Class="PhotoSorter.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:PhotoSorter.App.Controls"
+        Title="PhotoSorter"
+        Icon="Assets/PhotoSorter.ico"
+        Width="1480"
+        Height="900"
+        MinWidth="1120"
+        MinHeight="720"
+        WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <Style x:Key="CandidateItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                        <Border x:Name="Card"
+                                Padding="14"
+                                Background="White"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="11">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card" Property="BorderBrush" Value="#B9BDE8" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Card" Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                                <Setter TargetName="Card" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PhotoItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                        <Border x:Name="Card"
+                                Padding="10"
+                                Background="{StaticResource PanelBrush}"
+                                BorderBrush="Transparent"
+                                BorderThickness="1"
+                                CornerRadius="10">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card" Property="Background" Value="#F0F2F8" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Card" Property="BorderBrush" Value="#B9BDE8" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PhotoGridItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Width" Value="160" />
+            <Setter Property="Height" Value="120" />
+            <Setter Property="Margin" Value="0,0,10,10" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                        <Border x:Name="Card"
+                                Background="#E9EBF1"
+                                BorderBrush="Transparent"
+                                BorderThickness="2"
+                                CornerRadius="10"
+                                ClipToBounds="True">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card" Property="BorderBrush" Value="#B9BDE8" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Card" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ViewModeButtonStyle" TargetType="RadioButton">
+            <Setter Property="Padding" Value="9,5" />
+            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type RadioButton}">
+                        <Border x:Name="ModeButton"
+                                Padding="{TemplateBinding Padding}"
+                                Background="Transparent"
+                                CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ModeButton" Property="Background" Value="#E1E3EC" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ModeButton" Property="Background" Value="White" />
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="76" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="42" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Padding="22,12"
+                Background="White"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0"
+                        Width="42"
+                        Height="42"
+                        Margin="0,0,12,0"
+                        VerticalAlignment="Center"
+                        Background="{StaticResource AccentBrush}"
+                        CornerRadius="12">
+                    <TextBlock HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               FontSize="22"
+                               FontWeight="Bold"
+                               Foreground="White"
+                               Text="P" />
+                </Border>
+
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           Text="PhotoSorter" />
+
+                <StackPanel Grid.Column="2"
+                            Margin="42,0,24,0"
+                            VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource CaptionStyle}" Text="Folder" />
+                    <TextBlock
+                               Margin="0,2,0,0"
+                               FontWeight="SemiBold"
+                               Text="{Binding PicturesRoot}"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding PicturesRoot}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="3"
+                            VerticalAlignment="Center"
+                            Orientation="Horizontal">
+                    <Button Margin="0,0,8,0"
+                            Command="{Binding BrowseRootCommand}"
+                            Content="Change folder" />
+                    <Button Style="{StaticResource QuietButtonStyle}"
+                            Command="{Binding ScanLibraryCommand}"
+                            Content="Refresh" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ProgressBar Grid.Row="1"
+                     Margin="22,12,22,0"
+                     Maximum="100"
+                     Value="{Binding ProgressPercent}"
+                     Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+        <Grid Grid.Row="2" Margin="22,18">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="330" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="340" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Margin="4,2,4,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="124" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Suggestions" />
+                        <ComboBox Grid.Column="1"
+                                  Height="32"
+                                  MinHeight="32"
+                                  Padding="8,2"
+                                  VerticalAlignment="Center"
+                                  ItemsSource="{Binding YearFilters}"
+                                  SelectedItem="{Binding SelectedYearFilter}" />
+                    </Grid>
+
+                    <Grid Grid.Row="1">
+                        <ListBox ItemsSource="{Binding Candidates}"
+                                 ItemContainerStyle="{StaticResource CandidateItemStyle}"
+                                 SelectedItem="{Binding SelectedCandidate}"
+                                 ScrollViewer.CanContentScroll="True"
+                                 VirtualizingPanel.IsVirtualizing="True"
+                                 VirtualizingPanel.VirtualizationMode="Recycling">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Margin="0,0,8,0"
+                                                       FontSize="15"
+                                                       FontWeight="SemiBold"
+                                                       Text="{Binding Title}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding FullPlaceName}" />
+                                            <Border Grid.Column="1"
+                                                    Padding="8,3"
+                                                    Background="{StaticResource SuccessSoftBrush}"
+                                                    CornerRadius="8">
+                                                <TextBlock FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource SuccessTextBrush}"
+                                                           Text="{Binding ConfidenceText}" />
+                                            </Border>
+                                        </Grid>
+                                        <TextBlock Margin="0,7,0,0"
+                                                   Foreground="{StaticResource MutedTextBrush}"
+                                                   Text="{Binding Period}" />
+                                        <TextBlock Margin="0,2,0,8"
+                                                   Style="{StaticResource CaptionStyle}"
+                                                   Text="{Binding Summary}" />
+                                        <ProgressBar Height="3"
+                                                     Maximum="100"
+                                                     Value="{Binding Confidence, Mode=OneWay}" />
+                                        <TextBlock Margin="0,8,0,0"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource MutedTextBrush}"
+                                                   Text="{Binding WhySuggested}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <StackPanel HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    MaxWidth="230"
+                                    TextBlock.TextAlignment="Center">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasCandidates}" Value="False">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <TextBlock FontSize="34"
+                                       Foreground="#C7CAD5"
+                                       Text="&#x2713;" />
+                            <TextBlock Margin="0,10,0,0"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       Text="{Binding EmptyStateMessage}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock FontSize="25"
+                                   FontWeight="SemiBold"
+                                   Text="{Binding SelectedCandidate.Title}"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding SelectedCandidate.FullPlaceName}" />
+                        <Button Grid.Column="1"
+                                VerticalAlignment="Top"
+                                Style="{StaticResource QuietButtonStyle}"
+                                Click="OnMoreButtonClick"
+                                Content="More">
+                            <Button.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Header="Split before selected photo" Command="{Binding SplitCandidateCommand}" />
+                                    <MenuItem Header="Merge with next suggestion" Command="{Binding MergeNextCandidateCommand}" />
+                                    <MenuItem Header="Add nearby photos" Command="{Binding ExpandCandidateCommand}" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                    </Grid>
+
+                    <Border Grid.Row="1"
+                            Margin="0,16,0,14"
+                            Padding="13,11"
+                            Background="{StaticResource PanelBrush}"
+                            CornerRadius="10">
+                        <StackPanel>
+                            <TextBlock Margin="0,5,0,0"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       Text="{Binding SelectedCandidate.Period}" />
+                            <TextBlock Margin="0,4,0,0"
+                                       Text="{Binding SelectedCandidate.WhySuggested}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Grid Grid.Row="2" Margin="2,0,2,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="Photos in this group" />
+                            <TextBlock Margin="0,2,0,0"
+                                       Style="{StaticResource CaptionStyle}"
+                                       Text="Untick anything that does not belong." />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Orientation="Horizontal">
+                            <TextBlock Margin="0,0,12,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       Text="{Binding SelectedCandidate.Summary}" />
+                            <Border Padding="2"
+                                    Background="#EEF0F6"
+                                    CornerRadius="8">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton Style="{StaticResource ViewModeButtonStyle}"
+                                                 GroupName="PhotoViewMode"
+                                                 Content="List"
+                                                 IsChecked="{Binding IsPhotoListView, Mode=TwoWay}" />
+                                    <RadioButton Style="{StaticResource ViewModeButtonStyle}"
+                                                 GroupName="PhotoViewMode"
+                                                 Content="Grid"
+                                                 IsChecked="{Binding IsPhotoGridView, Mode=TwoWay}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+
+                    <ListBox Grid.Row="3"
+                             ItemsSource="{Binding SelectedBundles}"
+                             ItemContainerStyle="{StaticResource PhotoItemStyle}"
+                             SelectedItem="{Binding SelectedBundle}"
+                             ScrollViewer.CanContentScroll="True"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListBox.Style>
+                            <Style BasedOn="{StaticResource {x:Type ListBox}}" TargetType="ListBox">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsPhotoGridView}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListBox.Style>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="116" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Width="108"
+                                            Height="82"
+                                            Padding="0"
+                                            HorizontalAlignment="Left"
+                                            Background="Transparent"
+                                            Click="OnPhotoPreviewClick"
+                                            ToolTip="View this photo larger">
+                                        <Grid ClipToBounds="True">
+                                            <Border Background="#E9EBF1"
+                                                    CornerRadius="8">
+                                                <controls:LazyThumbnail FilePath="{Binding ThumbnailPath}"
+                                                                        FileLength="{Binding ThumbnailLength}"
+                                                                        LastWriteTimeUtc="{Binding ThumbnailLastWriteTimeUtc}"
+                                                                        PixelSize="160" />
+                                            </Border>
+                                            <Border Height="23"
+                                                    VerticalAlignment="Bottom"
+                                                    Background="#B0000000"
+                                                    CornerRadius="0,0,8,8">
+                                                <TextBlock HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="White"
+                                                           Text="View larger" />
+                                            </Border>
+                                        </Grid>
+                                    </Button>
+                                    <StackPanel Grid.Column="1"
+                                                Margin="12,3,12,0"
+                                                VerticalAlignment="Top">
+                                        <TextBlock FontWeight="SemiBold"
+                                                   Text="{Binding FileName}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Margin="0,4,0,0"
+                                                   Foreground="{StaticResource MutedTextBrush}"
+                                                   Text="{Binding Captured}" />
+                                        <TextBlock Margin="0,2,0,0"
+                                                   Foreground="{StaticResource MutedTextBrush}"
+                                                   Text="{Binding Location}" />
+                                        <TextBlock Margin="0,3,0,0"
+                                                   FontSize="11"
+                                                   Foreground="#8A8EA0"
+                                                   Text="{Binding Files}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="2"
+                                              Margin="8,3,3,0"
+                                              VerticalAlignment="Top"
+                                              Content="Include"
+                                              IsChecked="{Binding IsIncluded}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <ListBox Grid.Row="3"
+                             ItemsSource="{Binding SelectedBundles}"
+                             ItemContainerStyle="{StaticResource PhotoGridItemStyle}"
+                             SelectedItem="{Binding SelectedBundle}"
+                             ScrollViewer.CanContentScroll="False"
+                             VirtualizingPanel.IsVirtualizing="False">
+                        <ListBox.Style>
+                            <Style BasedOn="{StaticResource {x:Type ListBox}}" TargetType="ListBox">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsPhotoGridView}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListBox.Style>
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Border x:Name="PhotoSurface"
+                                            Background="#E9EBF1">
+                                        <Button MinHeight="0"
+                                                Padding="0"
+                                                Background="Transparent"
+                                                Click="OnPhotoPreviewClick"
+                                                ToolTip="View photo larger">
+                                            <controls:LazyThumbnail FilePath="{Binding ThumbnailPath}"
+                                                                    FileLength="{Binding ThumbnailLength}"
+                                                                    LastWriteTimeUtc="{Binding ThumbnailLastWriteTimeUtc}"
+                                                                    PixelSize="256"
+                                                                    Stretch="UniformToFill" />
+                                        </Button>
+                                    </Border>
+                                    <Border Margin="7"
+                                            Padding="4"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Top"
+                                            Background="#E6FFFFFF"
+                                            CornerRadius="10">
+                                        <CheckBox AutomationProperties.Name="Include in move"
+                                                  IsChecked="{Binding IsIncluded}"
+                                                  ToolTip="Include in move" />
+                                    </Border>
+                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsIncluded}" Value="False">
+                                        <Setter TargetName="PhotoSurface" Property="Opacity" Value="0.45" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <ScrollViewer Grid.Column="4"
+                          VerticalScrollBarVisibility="Auto">
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource CaptionStyle}" Text="Source folder" />
+                        <TextBlock Margin="0,5,0,0"
+                                   FontFamily="Consolas"
+                                   FontSize="12"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Text="{Binding SourceFolderSummary}"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding SourceFolderDetails}" />
+
+                        <Border Height="1"
+                                Margin="0,14"
+                                Background="{StaticResource BorderBrush}" />
+
+                        <TextBlock Style="{StaticResource CaptionStyle}" Text="Destination Folder" />
+                        <TextBlock Margin="0,5,0,5"
+                                   FontFamily="Consolas"
+                                   FontSize="12"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Text="{Binding DestinationPrefix}"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding DestinationPrefix}" />
+
+                        <Border Margin="0,14,0,16"
+                                Padding="11,9"
+                                Background="{StaticResource PanelBrush}"
+                                CornerRadius="8">
+                            <ComboBox IsEditable="True"
+                                     ItemsSource="{Binding ExistingFolders}"
+                                     Text="{Binding DestinationFolderName, UpdateSourceTrigger=PropertyChanged}" />
+                        </Border>
+
+                        <Button Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding MoveSelectedCommand}"
+                                Content="Name and move" />
+
+                        <Border Height="1"
+                                Margin="0,0,0,14"
+                                Background="{StaticResource BorderBrush}" />
+                        <Button Command="{Binding IgnoreCandidateCommand}"
+                                Content="Ignore this one" />
+                        <TextBlock Margin="2,5,2,12"
+                                   Style="{StaticResource CaptionStyle}"
+                                   Text="Remember only this date-and-place group."
+                                   TextWrapping="Wrap" />
+
+                        <Button Command="{Binding IgnoreLocationCommand}"
+                                Content="Ignore this location always" />
+                        <TextBlock Margin="2,5,2,0"
+                                   Style="{StaticResource CaptionStyle}"
+                                   Text="Stop suggesting future groups around this named place."
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </ScrollViewer>
+        </Grid>
+
+        <Border Grid.Row="3"
+                Padding="22,0"
+                Background="White"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,1,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           Text="{Binding StatusMessage}"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1"
+                           Margin="12,0"
+                           VerticalAlignment="Center"
+                           FontSize="11"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           Text="{Binding Attribution}" />
+                <Button Grid.Column="2"
+                        Padding="10,5"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource QuietButtonStyle}"
+                        Command="{Binding CancelScanCommand}"
+                        Content="Cancel"
+                        Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

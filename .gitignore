@@ -1,0 +1,12 @@
+.vs/
+artifacts/
+**/bin/
+**/obj/
+TestResults/
+*.user
+*.suo
+*.trx
+*.coverage
+.photosorter.json
+.photosorter.json.lock
+.photosorter.json.*.tmp

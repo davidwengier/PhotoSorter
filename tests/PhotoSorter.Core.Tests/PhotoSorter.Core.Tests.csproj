@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- CA1707: underscore-separated test names (Method_Scenario_Expected) are the intended convention for this suite.
+         CA1861: literal arrays passed directly to Assert/CollectionAssert calls are idiomatic and not a perf concern in tests. -->
+    <NoWarn>$(NoWarn);CA1707;CA1861</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PhotoSorter.Core\PhotoSorter.Core.csproj" />
+  </ItemGroup>
+
+</Project>

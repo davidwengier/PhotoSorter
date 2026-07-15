@@ -1,0 +1,16 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/PhotoSorter.App/PhotoSorter.App.csproj" />
+    <Project Path="src/PhotoSorter.Core/PhotoSorter.Core.csproj" />
+    <Project Path="src/PhotoSorter.Infrastructure/PhotoSorter.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PhotoSorter.Core.Tests/PhotoSorter.Core.Tests.csproj" />
+    <Project Path="tests/PhotoSorter.Infrastructure.Tests/PhotoSorter.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>

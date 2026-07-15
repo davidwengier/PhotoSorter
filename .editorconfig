@@ -1,0 +1,20 @@
+root = true
+
+[*.{cs,xaml}]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+dotnet_sort_system_directives_first = true
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_prefer_primary_constructors = false
+
+# Service instances are registered through dependency injection even when their first
+# implementation is stateless. Keep public contracts collection-oriented.
+dotnet_diagnostic.CA1822.severity = silent
+dotnet_diagnostic.CA1859.severity = silent
+dotnet_diagnostic.CA1848.severity = silent
+dotnet_diagnostic.CA1873.severity = silent
