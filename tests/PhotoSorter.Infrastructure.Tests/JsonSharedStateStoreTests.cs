@@ -17,11 +17,12 @@ public sealed class JsonSharedStateStoreTests
 
         Assert.AreEqual(PhotoSorterState.CurrentSchemaVersion, state.SchemaVersion);
         Assert.IsEmpty(state.RoutineLocations);
+        Assert.IsEmpty(state.IgnoredGroups);
         Assert.IsFalse(File.Exists(sut.GetStatePath(temp.Path)));
     }
 
     [TestMethod]
-    public async Task UpdateAsync_NewRoot_WritesIndentedCamelCaseJson()
+    public async Task UpdateAsync_NewRoot_WritesVersionTwoWithoutRemovedFields()
     {
         using var temp = new TempDirectory();
         var sut = new JsonSharedStateStore();
@@ -29,9 +30,12 @@ public sealed class JsonSharedStateStoreTests
         await CreateStateFileAsync(sut, temp.Path);
 
         var content = await File.ReadAllTextAsync(sut.GetStatePath(temp.Path));
-        Assert.IsTrue(content.Contains("\"schemaVersion\": 1", StringComparison.Ordinal));
+        Assert.IsTrue(content.Contains("\"schemaVersion\": 2", StringComparison.Ordinal));
         Assert.IsTrue(content.Contains("\n  \"schemaVersion\"", StringComparison.Ordinal));
-        Assert.IsTrue(content.Contains("\"routineLocations\": []", StringComparison.Ordinal));
+        Assert.IsTrue(content.Contains("\"ignoredGroups\": []", StringComparison.Ordinal));
+        Assert.IsFalse(content.Contains("\"ignoredFolders\"", StringComparison.Ordinal));
+        Assert.IsFalse(content.Contains("\"disposition\"", StringComparison.Ordinal));
+        Assert.IsFalse(content.Contains("\"suppressCandidates\"", StringComparison.Ordinal));
         Assert.IsFalse(content.Contains("\"preferences\"", StringComparison.Ordinal));
     }
 
@@ -51,7 +55,7 @@ public sealed class JsonSharedStateStoreTests
     }
 
     [TestMethod]
-    public async Task UpdateAsync_AddsOneRoutineLocation_OnlyThatFieldChanges()
+    public async Task UpdateAsync_AddsDecisionsWithoutChangingExistingEntries()
     {
         using var temp = new TempDirectory();
         var sut = new JsonSharedStateStore();
@@ -60,35 +64,33 @@ public sealed class JsonSharedStateStoreTests
             temp.Path,
             state => state with
             {
-                RoutineLocations = [.. state.RoutineLocations, new RoutineLocationDecision
-                {
-                    Id = "home",
-                    Name = "Home",
-                    Center = new GeoPoint(1.5, 2.5),
-                    RadiusMeters = 400,
-                }],
+                RoutineLocations =
+                [
+                    .. state.RoutineLocations,
+                    new RoutineLocationDecision
+                    {
+                        Id = "home",
+                        Name = "Home",
+                        Center = new GeoPoint(1.5, 2.5),
+                        RadiusMeters = 400,
+                    },
+                ],
             });
 
         Assert.HasCount(1, updated.RoutineLocations);
-        Assert.IsEmpty(updated.IgnoredFolders);
         Assert.IsEmpty(updated.IgnoredGroups);
-        Assert.AreEqual(PhotoSorterState.CurrentSchemaVersion, updated.SchemaVersion);
-        Assert.IsNull(updated.LegacyPreferences);
 
         var second = await sut.UpdateAsync(
             temp.Path,
             state => state with
             {
-                IgnoredFolders = [.. state.IgnoredFolders, new IgnoredFolderRule
-                {
-                    Id = "f1",
-                    RelativePath = "2023/Screenshots",
-                }],
+                IgnoredGroups = [.. state.IgnoredGroups, CreateIgnoredGroup("g1")],
             });
 
         Assert.HasCount(1, second.RoutineLocations);
         Assert.AreEqual("home", second.RoutineLocations[0].Id);
-        Assert.HasCount(1, second.IgnoredFolders);
+        Assert.HasCount(1, second.IgnoredGroups);
+        Assert.AreEqual(PhotoSorterState.CurrentSchemaVersion, second.SchemaVersion);
     }
 
     [TestMethod]
@@ -114,7 +116,7 @@ public sealed class JsonSharedStateStoreTests
         var statePath = sut.GetStatePath(temp.Path);
         var original = await File.ReadAllTextAsync(statePath);
         var futureContent = original.Replace(
-            "\"schemaVersion\": 1",
+            "\"schemaVersion\": 2",
             "\"schemaVersion\": 999",
             StringComparison.Ordinal);
         await File.WriteAllTextAsync(statePath, futureContent);
@@ -125,44 +127,189 @@ public sealed class JsonSharedStateStoreTests
     }
 
     [TestMethod]
-    public async Task UpdateAsync_RootedIgnoredFolderPath_ThrowsAndRejectsAsNonPortable()
+    public async Task LoadAsync_CurrentSchema_DoesNotRewriteFile()
     {
         using var temp = new TempDirectory();
         var sut = new JsonSharedStateStore();
+        var statePath = sut.GetStatePath(temp.Path);
+        const string current =
+            """
+            {
+              // Keep this comment and formatting when no migration is needed.
+              "schemaVersion": 2,
+              "routineLocations": [],
+              "ignoredGroups": []
+            }
+            """;
+        await File.WriteAllTextAsync(statePath, current);
 
-        await Assert.ThrowsExactlyAsync<StateFileException>(
-            () => sut.UpdateAsync(
-                temp.Path,
-                state => state with
-                {
-                    IgnoredFolders = [.. state.IgnoredFolders, new IgnoredFolderRule
-                    {
-                        Id = "f1",
-                        RelativePath = @"C:\Absolute\Path",
-                    }],
-                }));
-        Assert.IsFalse(File.Exists(sut.GetStatePath(temp.Path)));
+        var state = await sut.LoadAsync(temp.Path);
+
+        Assert.AreEqual(PhotoSorterState.CurrentSchemaVersion, state.SchemaVersion);
+        Assert.AreEqual(current, await File.ReadAllTextAsync(statePath));
     }
 
     [TestMethod]
-    public async Task UpdateAsync_RelativeIgnoredFolderPath_Succeeds()
+    public async Task LoadAsync_VersionOneState_RewritesVersionTwoAndDropsObsoleteData()
     {
         using var temp = new TempDirectory();
         var sut = new JsonSharedStateStore();
-
-        var updated = await sut.UpdateAsync(
-            temp.Path,
-            state => state with
+        var statePath = sut.GetStatePath(temp.Path);
+        const string versionOne =
+            """
             {
-                IgnoredFolders = [.. state.IgnoredFolders, new IgnoredFolderRule
+              "schemaVersion": 1,
+              "routineLocations": [
                 {
-                    Id = "f1",
-                    RelativePath = @"2023\Screenshots",
-                }],
-            });
+                  "id": "home",
+                  "name": "Home",
+                  "disposition": "routine",
+                  "center": { "latitude": 1.5, "longitude": 2.5 },
+                  "radiusMeters": 400,
+                  "suppressCandidates": true
+                },
+                {
+                  "id": "not-routine",
+                  "name": "Not routine",
+                  "disposition": "notRoutine",
+                  "center": { "latitude": 3.0, "longitude": 4.0 },
+                  "radiusMeters": 500,
+                  "suppressCandidates": true
+                },
+                {
+                  "id": "disabled",
+                  "name": "Disabled",
+                  "disposition": "routine",
+                  "center": { "latitude": 5.0, "longitude": 6.0 },
+                  "radiusMeters": 500,
+                  "suppressCandidates": false
+                }
+              ],
+              "ignoredFolders": [
+                {
+                  "id": "private",
+                  "relativePath": "2023/Phone Images/Private",
+                  "recursive": true,
+                  "label": "Private"
+                }
+              ],
+              "ignoredGroups": [
+                {
+                  "id": "handled",
+                  "label": "Already handled",
+                  "kind": "event",
+                  "start": "2023-06-01T10:00:00+00:00",
+                  "end": "2023-06-01T11:00:00+00:00",
+                  "timePaddingMinutes": 90,
+                  "requiredLocationMatchFraction": 0.5,
+                  "areas": [
+                    {
+                      "center": { "latitude": 1.0, "longitude": 2.0 },
+                      "radiusMeters": 500
+                    }
+                  ]
+                }
+              ],
+              "preferences": {
+                "reverseGeocodingEnabled": true
+              }
+            }
+            """;
+        await File.WriteAllTextAsync(statePath, versionOne);
 
-        Assert.HasCount(1, updated.IgnoredFolders);
-        Assert.IsTrue(File.Exists(sut.GetStatePath(temp.Path)));
+        var state = await sut.LoadAsync(temp.Path);
+
+        Assert.AreEqual(PhotoSorterState.CurrentSchemaVersion, state.SchemaVersion);
+        Assert.HasCount(1, state.RoutineLocations);
+        Assert.AreEqual("home", state.RoutineLocations[0].Id);
+        Assert.HasCount(1, state.IgnoredGroups);
+        Assert.AreEqual("handled", state.IgnoredGroups[0].Id);
+
+        var migrated = await File.ReadAllTextAsync(statePath);
+        Assert.IsTrue(migrated.Contains("\"schemaVersion\": 2", StringComparison.Ordinal));
+        Assert.IsTrue(migrated.Contains("\"label\": \"Already handled\"", StringComparison.Ordinal));
+        Assert.IsFalse(migrated.Contains("\"ignoredFolders\"", StringComparison.Ordinal));
+        Assert.IsFalse(migrated.Contains("\"disposition\"", StringComparison.Ordinal));
+        Assert.IsFalse(migrated.Contains("\"suppressCandidates\"", StringComparison.Ordinal));
+        Assert.IsFalse(migrated.Contains("\"preferences\"", StringComparison.Ordinal));
+        Assert.IsEmpty(Directory.GetFiles(temp.Path, "*.tmp"));
+        Assert.IsFalse(File.Exists(statePath + ".lock"));
+    }
+
+    [TestMethod]
+    public async Task LoadAsync_VersionOneStateWithOnlyObsoleteData_DeletesFile()
+    {
+        using var temp = new TempDirectory();
+        var sut = new JsonSharedStateStore();
+        var statePath = sut.GetStatePath(temp.Path);
+        const string versionOne =
+            """
+            {
+              "schemaVersion": 1,
+              "routineLocations": [
+                {
+                  "id": "disabled",
+                  "name": "Disabled",
+                  "disposition": "routine",
+                  "center": { "latitude": 5.0, "longitude": 6.0 },
+                  "radiusMeters": 500,
+                  "suppressCandidates": false
+                }
+              ],
+              "ignoredFolders": [
+                {
+                  "id": "private",
+                  "relativePath": "2023/Phone Images/Private",
+                  "recursive": true,
+                  "label": null
+                }
+              ],
+              "ignoredGroups": [],
+              "preferences": {
+                "reverseGeocodingEnabled": true
+              }
+            }
+            """;
+        await File.WriteAllTextAsync(statePath, versionOne);
+
+        var state = await sut.LoadAsync(temp.Path);
+
+        Assert.IsEmpty(state.RoutineLocations);
+        Assert.IsEmpty(state.IgnoredGroups);
+        Assert.IsFalse(File.Exists(statePath));
+        Assert.IsFalse(File.Exists(statePath + ".lock"));
+    }
+
+    [TestMethod]
+    public async Task LoadAsync_VersionOneDefaultsWithoutSchemaOrFlags_PreservesRoutineLocation()
+    {
+        using var temp = new TempDirectory();
+        var sut = new JsonSharedStateStore();
+        var statePath = sut.GetStatePath(temp.Path);
+        const string versionOne =
+            """
+            {
+              "routineLocations": [
+                {
+                  "id": "home",
+                  "name": "Home",
+                  "center": { "latitude": 1.5, "longitude": 2.5 },
+                  "radiusMeters": 400
+                }
+              ],
+              "ignoredGroups": []
+            }
+            """;
+        await File.WriteAllTextAsync(statePath, versionOne);
+
+        var state = await sut.LoadAsync(temp.Path);
+
+        Assert.AreEqual(PhotoSorterState.CurrentSchemaVersion, state.SchemaVersion);
+        Assert.HasCount(1, state.RoutineLocations);
+        Assert.AreEqual("home", state.RoutineLocations[0].Id);
+        Assert.IsTrue(
+            (await File.ReadAllTextAsync(statePath))
+            .Contains("\"schemaVersion\": 2", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -174,6 +321,7 @@ public sealed class JsonSharedStateStoreTests
         var state = await sut.UpdateAsync(temp.Path, static current => current);
 
         Assert.IsEmpty(state.RoutineLocations);
+        Assert.IsEmpty(state.IgnoredGroups);
         Assert.IsFalse(File.Exists(sut.GetStatePath(temp.Path)));
     }
 
@@ -186,38 +334,10 @@ public sealed class JsonSharedStateStoreTests
 
         var state = await sut.UpdateAsync(
             temp.Path,
-            current => current with { IgnoredFolders = [] });
+            current => current with { RoutineLocations = [] });
 
-        Assert.IsEmpty(state.IgnoredFolders);
+        Assert.IsEmpty(state.RoutineLocations);
         Assert.IsFalse(File.Exists(sut.GetStatePath(temp.Path)));
-    }
-
-    [TestMethod]
-    public async Task LoadAsync_LegacyPreferencesOnlyFile_IsAcceptedWithoutChangingIt()
-    {
-        using var temp = new TempDirectory();
-        var sut = new JsonSharedStateStore();
-        var statePath = sut.GetStatePath(temp.Path);
-        const string legacy =
-            """
-            {
-              "schemaVersion": 1,
-              "routineLocations": [],
-              "ignoredFolders": [],
-              "ignoredGroups": [],
-              "preferences": {
-                "reverseGeocodingEnabled": true,
-                "reverseGeocodingProvider": "nominatim",
-                "reverseGeocodingEndpoint": "https://nominatim.openstreetmap.org/"
-              }
-            }
-            """;
-        await File.WriteAllTextAsync(statePath, legacy);
-
-        var state = await sut.LoadAsync(temp.Path);
-
-        Assert.IsNull(state.LegacyPreferences);
-        Assert.AreEqual(legacy, await File.ReadAllTextAsync(statePath));
     }
 
     [TestMethod]
@@ -229,6 +349,7 @@ public sealed class JsonSharedStateStoreTests
         await CreateStateFileAsync(sut, temp.Path);
 
         Assert.IsEmpty(Directory.GetFiles(temp.Path, "*.tmp"));
+        Assert.IsFalse(File.Exists(sut.GetStatePath(temp.Path) + ".lock"));
     }
 
     [TestMethod]
@@ -245,15 +366,22 @@ public sealed class JsonSharedStateStoreTests
                 temp.Path,
                 state => state with
                 {
-                    IgnoredFolders = [.. state.IgnoredFolders, new IgnoredFolderRule
-                    {
-                        Id = "f1",
-                        RelativePath = @"..\Escape",
-                    }],
+                    RoutineLocations =
+                    [
+                        .. state.RoutineLocations,
+                        new RoutineLocationDecision
+                        {
+                            Id = "invalid",
+                            Name = "Invalid",
+                            Center = new GeoPoint(1, 1),
+                            RadiusMeters = 0,
+                        },
+                    ],
                 }));
 
         CollectionAssert.AreEqual(before, await File.ReadAllBytesAsync(statePath));
         Assert.IsEmpty(Directory.GetFiles(temp.Path, "*.tmp"));
+        Assert.IsFalse(File.Exists(statePath + ".lock"));
     }
 
     [TestMethod]
@@ -267,23 +395,31 @@ public sealed class JsonSharedStateStoreTests
             tempA.Path,
             state => state with
             {
-                RoutineLocations = [.. state.RoutineLocations, new RoutineLocationDecision
-                {
-                    Id = "a",
-                    Name = "RootA-Home",
-                    Center = new GeoPoint(1, 1),
-                }],
+                RoutineLocations =
+                [
+                    .. state.RoutineLocations,
+                    new RoutineLocationDecision
+                    {
+                        Id = "a",
+                        Name = "RootA-Home",
+                        Center = new GeoPoint(1, 1),
+                    },
+                ],
             });
         await sut.UpdateAsync(
             tempB.Path,
             state => state with
             {
-                RoutineLocations = [.. state.RoutineLocations, new RoutineLocationDecision
-                {
-                    Id = "b",
-                    Name = "RootB-Home",
-                    Center = new GeoPoint(2, 2),
-                }],
+                RoutineLocations =
+                [
+                    .. state.RoutineLocations,
+                    new RoutineLocationDecision
+                    {
+                        Id = "b",
+                        Name = "RootB-Home",
+                        Center = new GeoPoint(2, 2),
+                    },
+                ],
             });
 
         var stateA = await sut.LoadAsync(tempA.Path);
@@ -304,6 +440,19 @@ public sealed class JsonSharedStateStoreTests
         Assert.ThrowsExactly<DirectoryNotFoundException>(() => sut.GetStatePath(missingRoot));
     }
 
+    private static IgnoredGroupRule CreateIgnoredGroup(string id) =>
+        new()
+        {
+            Id = id,
+            Label = "Handled",
+            Kind = CandidateKind.Event,
+            Start = new DateTimeOffset(2023, 6, 1, 10, 0, 0, TimeSpan.Zero),
+            End = new DateTimeOffset(2023, 6, 1, 11, 0, 0, TimeSpan.Zero),
+            TimePaddingMinutes = 90,
+            RequiredLocationMatchFraction = 0.5,
+            Areas = [new GeoCircle { Center = new GeoPoint(1, 2), RadiusMeters = 500 }],
+        };
+
     private static Task<PhotoSorterState> CreateStateFileAsync(
         JsonSharedStateStore store,
         string root) =>
@@ -311,13 +460,15 @@ public sealed class JsonSharedStateStoreTests
             root,
             state => state with
             {
-                IgnoredFolders =
+                RoutineLocations =
                 [
-                    .. state.IgnoredFolders,
-                    new IgnoredFolderRule
+                    .. state.RoutineLocations,
+                    new RoutineLocationDecision
                     {
-                        Id = "screenshots",
-                        RelativePath = "2023/Screenshots",
+                        Id = "home",
+                        Name = "Home",
+                        Center = new GeoPoint(1.5, 2.5),
+                        RadiusMeters = 400,
                     },
                 ],
             });

@@ -51,7 +51,7 @@ public sealed class MediaScannerTests
         cache.SeedAssets([cachedAsset]);
         var scanner = new MediaScanner(new FakeMediaCacheFactory(cache), new MediaMetadataReader(), new AssetBundler());
 
-        var result = await scanner.ScanAsync(temp.Path, new PhotoSorterState());
+        var result = await scanner.ScanAsync(temp.Path);
 
         Assert.AreEqual(1, result.ReusedMetadataCount);
         Assert.AreEqual(0, result.ExtractedMetadataCount);
@@ -83,7 +83,7 @@ public sealed class MediaScannerTests
         cache.SeedAssets([staleCachedAsset]);
         var scanner = new MediaScanner(new FakeMediaCacheFactory(cache), new MediaMetadataReader(), new AssetBundler());
 
-        var result = await scanner.ScanAsync(temp.Path, new PhotoSorterState());
+        var result = await scanner.ScanAsync(temp.Path);
 
         Assert.AreEqual(0, result.ReusedMetadataCount);
         Assert.AreEqual(1, result.ExtractedMetadataCount);
@@ -91,26 +91,6 @@ public sealed class MediaScannerTests
         Assert.AreEqual(2023, result.Assets[0].CapturedAt.Year);
         Assert.AreEqual(1, result.Assets[0].CapturedAt.Month);
         Assert.AreEqual(1, result.Assets[0].CapturedAt.Day);
-    }
-
-    [TestMethod]
-    public async Task ScanAsync_IgnoredFolderRule_ExcludesMatchingFilesFromResult()
-    {
-        using var temp = new TempDirectory();
-        var phoneImages = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Phone Images")).FullName;
-        var privateFolder = Directory.CreateDirectory(Path.Combine(phoneImages, "Private")).FullName;
-        await File.WriteAllBytesAsync(Path.Combine(phoneImages, "kept.jpg"), MinimalJpeg);
-        await File.WriteAllBytesAsync(Path.Combine(privateFolder, "secret.jpg"), MinimalJpeg);
-        var state = new PhotoSorterState
-        {
-            IgnoredFolders = [new IgnoredFolderRule { Id = "f1", RelativePath = @"2023\Phone Images\Private", Recursive = true }],
-        };
-        var scanner = CreateScanner();
-
-        var result = await scanner.ScanAsync(temp.Path, state);
-
-        Assert.HasCount(1, result.Assets);
-        Assert.AreEqual(@"2023\Phone Images\kept.jpg", result.Assets[0].RelativePath);
     }
 
     [TestMethod]
@@ -124,7 +104,7 @@ public sealed class MediaScannerTests
         await File.WriteAllBytesAsync(Path.Combine(validPhoneImages, "valid.jpg"), MinimalJpeg);
         var scanner = CreateScanner();
 
-        var result = await scanner.ScanAsync(temp.Path, new PhotoSorterState());
+        var result = await scanner.ScanAsync(temp.Path);
 
         Assert.HasCount(1, result.Assets);
         Assert.AreEqual(@"2023\Phone Images\valid.jpg", result.Assets[0].RelativePath);
@@ -156,7 +136,7 @@ public sealed class MediaScannerTests
         cache.SeedAssets([cachedAsset]);
         var scanner = new MediaScanner(new FakeMediaCacheFactory(cache), new MediaMetadataReader(), new AssetBundler());
 
-        var result = await scanner.ScanAsync(temp.Path, new PhotoSorterState());
+        var result = await scanner.ScanAsync(temp.Path);
 
         Assert.IsEmpty(result.Issues);
     }
@@ -168,7 +148,7 @@ public sealed class MediaScannerTests
         var missingRoot = Path.Combine(Path.GetTempPath(), "DoesNotExist_" + Guid.NewGuid().ToString("N"));
 
         await Assert.ThrowsExactlyAsync<DirectoryNotFoundException>(
-            () => scanner.ScanAsync(missingRoot, new PhotoSorterState()));
+            () => scanner.ScanAsync(missingRoot));
     }
 
     private static MediaScanner CreateScanner()

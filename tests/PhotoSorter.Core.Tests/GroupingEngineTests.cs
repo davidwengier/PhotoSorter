@@ -104,8 +104,6 @@ public sealed class GroupingEngineTests
                     Name = "Home",
                     Center = suppressedLocation,
                     RadiusMeters = 500,
-                    Disposition = RoutineLocationDisposition.Routine,
-                    SuppressCandidates = true,
                 },
             ],
         };

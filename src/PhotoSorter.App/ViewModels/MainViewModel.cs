@@ -280,10 +280,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var decision = new RoutineLocationDecision
         {
             Name = placeName,
-            Disposition = RoutineLocationDisposition.Routine,
             Center = area.Center,
             RadiusMeters = Math.Clamp(area.RadiusMeters, 250, 1_500),
-            SuppressCandidates = true,
         };
         if (!await PersistStateAsync(state => state with
         {
@@ -515,7 +513,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _scanResult = await Task.Run(
                 () => _mediaScanner.ScanAsync(
                     fullRoot,
-                    _state,
                     progress,
                     _scanCancellation.Token),
                 _scanCancellation.Token);

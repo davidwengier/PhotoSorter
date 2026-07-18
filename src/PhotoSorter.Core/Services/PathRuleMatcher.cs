@@ -6,30 +6,6 @@ public static class PathRuleMatcher
 {
     private static readonly StringComparison PathComparison = StringComparison.OrdinalIgnoreCase;
 
-    public static bool IsIgnored(string relativeFilePath, IEnumerable<IgnoredFolderRule> rules)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(relativeFilePath);
-        ArgumentNullException.ThrowIfNull(rules);
-
-        var directory = NormalizeRelativePath(Path.GetDirectoryName(relativeFilePath) ?? string.Empty);
-        foreach (var rule in rules)
-        {
-            var ignoredDirectory = NormalizeRelativePath(rule.RelativePath);
-            if (directory.Equals(ignoredDirectory, PathComparison))
-            {
-                return true;
-            }
-
-            if (rule.Recursive
-                && directory.StartsWith(ignoredDirectory + Path.DirectorySeparatorChar, PathComparison))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     public static string NormalizeRelativePath(string path)
     {
         ArgumentNullException.ThrowIfNull(path);

@@ -38,7 +38,6 @@ public interface IMediaScanner
 {
     Task<MediaScanResult> ScanAsync(
         string picturesRoot,
-        PhotoSorterState state,
         IProgress<ScanProgress>? progress = null,
         CancellationToken cancellationToken = default);
 }

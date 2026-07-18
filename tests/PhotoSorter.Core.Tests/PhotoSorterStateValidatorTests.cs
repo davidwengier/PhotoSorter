@@ -45,19 +45,27 @@ public sealed class PhotoSorterStateValidatorTests
     }
 
     [TestMethod]
+    public void Validate_SchemaVersionOlderThanCurrent_ReturnsError()
+    {
+        var state = new PhotoSorterState { SchemaVersion = PhotoSorterState.CurrentSchemaVersion - 1 };
+
+        var errors = PhotoSorterStateValidator.Validate(state);
+
+        Assert.IsTrue(errors.Any(error => error.Contains("older than the current version", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
     public void Validate_NullCollections_ReturnsActionableErrors()
     {
         var state = new PhotoSorterState
         {
             RoutineLocations = null!,
-            IgnoredFolders = null!,
             IgnoredGroups = null!,
         };
 
         var errors = PhotoSorterStateValidator.Validate(state);
 
         Assert.IsTrue(errors.Any(error => error.Contains("routineLocations", StringComparison.Ordinal)));
-        Assert.IsTrue(errors.Any(error => error.Contains("ignoredFolders", StringComparison.Ordinal)));
         Assert.IsTrue(errors.Any(error => error.Contains("ignoredGroups", StringComparison.Ordinal)));
     }
 
@@ -76,23 +84,6 @@ public sealed class PhotoSorterStateValidatorTests
         var errors = PhotoSorterStateValidator.Validate(state);
 
         Assert.IsTrue(errors.Any(error => error.Contains("routineLocations contains duplicate id 'dup'", StringComparison.Ordinal)));
-    }
-
-    [TestMethod]
-    public void Validate_DuplicateIgnoredFolderIds_ReturnsError()
-    {
-        var state = new PhotoSorterState
-        {
-            IgnoredFolders =
-            [
-                new IgnoredFolderRule { Id = "dup", RelativePath = "2023/A" },
-                new IgnoredFolderRule { Id = "dup", RelativePath = "2023/B" },
-            ],
-        };
-
-        var errors = PhotoSorterStateValidator.Validate(state);
-
-        Assert.IsTrue(errors.Any(error => error.Contains("ignoredFolders contains duplicate id 'dup'", StringComparison.Ordinal)));
     }
 
     [TestMethod]
@@ -159,19 +150,6 @@ public sealed class PhotoSorterStateValidatorTests
         var errors = PhotoSorterStateValidator.Validate(state);
 
         Assert.IsTrue(errors.Any(error => error.Contains("must have a positive radiusMeters", StringComparison.Ordinal)));
-    }
-
-    [TestMethod]
-    public void Validate_IgnoredFolderNonPortablePath_ReturnsError()
-    {
-        var state = new PhotoSorterState
-        {
-            IgnoredFolders = [new IgnoredFolderRule { Id = "f1", RelativePath = @"C:\Absolute\Path" }],
-        };
-
-        var errors = PhotoSorterStateValidator.Validate(state);
-
-        Assert.IsTrue(errors.Any(error => error.Contains("Pictures-root-relative path", StringComparison.Ordinal)));
     }
 
     [TestMethod]
@@ -261,7 +239,6 @@ public sealed class PhotoSorterStateValidatorTests
         var state = new PhotoSorterState
         {
             RoutineLocations = [new RoutineLocationDecision { Id = "r1", Name = "Home", Center = new GeoPoint(10, 20), RadiusMeters = 100 }],
-            IgnoredFolders = [new IgnoredFolderRule { Id = "f1", RelativePath = @"2023\Screenshots" }],
             IgnoredGroups = [new IgnoredGroupRule { Id = "g1", Areas = [ValidCircle()] }],
         };
 

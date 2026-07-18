@@ -7,7 +7,7 @@ namespace PhotoSorter.Core.Tests;
 public sealed class DecisionMatcherTests
 {
     [TestMethod]
-    public void IsSuppressedRoutine_MatchingRoutineWithSuppression_ReturnsTrue()
+    public void IsSuppressedRoutine_MatchingRoutine_ReturnsTrue()
     {
         var sut = new DecisionMatcher();
         var decision = new RoutineLocationDecision
@@ -16,51 +16,11 @@ public sealed class DecisionMatcherTests
             Name = "Home",
             Center = new GeoPoint(51.0, 0.0),
             RadiusMeters = 200,
-            Disposition = RoutineLocationDisposition.Routine,
-            SuppressCandidates = true,
         };
 
         var result = sut.IsSuppressedRoutine(new GeoPoint(51.0, 0.0), [decision]);
 
         Assert.IsTrue(result);
-    }
-
-    [TestMethod]
-    public void IsSuppressedRoutine_NotRoutineDisposition_ReturnsFalse()
-    {
-        var sut = new DecisionMatcher();
-        var decision = new RoutineLocationDecision
-        {
-            Id = "d1",
-            Name = "Home",
-            Center = new GeoPoint(51.0, 0.0),
-            RadiusMeters = 200,
-            Disposition = RoutineLocationDisposition.NotRoutine,
-            SuppressCandidates = true,
-        };
-
-        var result = sut.IsSuppressedRoutine(new GeoPoint(51.0, 0.0), [decision]);
-
-        Assert.IsFalse(result);
-    }
-
-    [TestMethod]
-    public void IsSuppressedRoutine_SuppressionDisabled_ReturnsFalse()
-    {
-        var sut = new DecisionMatcher();
-        var decision = new RoutineLocationDecision
-        {
-            Id = "d1",
-            Name = "Home",
-            Center = new GeoPoint(51.0, 0.0),
-            RadiusMeters = 200,
-            Disposition = RoutineLocationDisposition.Routine,
-            SuppressCandidates = false,
-        };
-
-        var result = sut.IsSuppressedRoutine(new GeoPoint(51.0, 0.0), [decision]);
-
-        Assert.IsFalse(result);
     }
 
     [TestMethod]

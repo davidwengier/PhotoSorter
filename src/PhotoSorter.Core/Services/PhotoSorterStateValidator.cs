@@ -20,15 +20,17 @@ public static class PhotoSorterStateValidator
                 $"schemaVersion {state.SchemaVersion} is newer than the supported version "
                 + $"{PhotoSorterState.CurrentSchemaVersion}.");
         }
+        else if (state.SchemaVersion > 0
+            && state.SchemaVersion < PhotoSorterState.CurrentSchemaVersion)
+        {
+            errors.Add(
+                $"schemaVersion {state.SchemaVersion} is older than the current version "
+                + $"{PhotoSorterState.CurrentSchemaVersion}.");
+        }
 
         if (state.RoutineLocations is null)
         {
             errors.Add("routineLocations must be a JSON array.");
-        }
-
-        if (state.IgnoredFolders is null)
-        {
-            errors.Add("ignoredFolders must be a JSON array.");
         }
 
         if (state.IgnoredGroups is null)
@@ -37,16 +39,11 @@ public static class PhotoSorterStateValidator
         }
 
         var routineLocations = state.RoutineLocations ?? [];
-        var ignoredFolders = state.IgnoredFolders ?? [];
         var ignoredGroups = state.IgnoredGroups ?? [];
 
         ValidateUniqueIds(
             routineLocations.Select(static decision => decision.Id),
             "routineLocations",
-            errors);
-        ValidateUniqueIds(
-            ignoredFolders.Select(static rule => rule.Id),
-            "ignoredFolders",
             errors);
         ValidateUniqueIds(
             ignoredGroups.Select(static rule => rule.Id),
@@ -64,15 +61,6 @@ public static class PhotoSorterStateValidator
             if (decision.RadiusMeters <= 0)
             {
                 errors.Add($"Routine location '{decision.Id}' must have a positive radiusMeters.");
-            }
-        }
-
-        foreach (var rule in ignoredFolders)
-        {
-            if (!PathRuleMatcher.IsPortableRelativePath(rule.RelativePath))
-            {
-                errors.Add(
-                    $"Ignored folder '{rule.Id}' must use a Pictures-root-relative path without '.' or '..' segments.");
             }
         }
 

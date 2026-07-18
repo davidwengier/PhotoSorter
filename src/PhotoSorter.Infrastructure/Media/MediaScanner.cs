@@ -43,12 +43,10 @@ public sealed partial class MediaScanner(
 
     public async Task<MediaScanResult> ScanAsync(
         string picturesRoot,
-        PhotoSorterState state,
         IProgress<ScanProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(picturesRoot);
-        ArgumentNullException.ThrowIfNull(state);
 
         var fullRoot = Path.GetFullPath(picturesRoot);
         if (!Directory.Exists(fullRoot))
@@ -58,7 +56,7 @@ public sealed partial class MediaScanner(
 
         progress?.Report(new ScanProgress(ScanPhase.Discovering, 0, 0));
         var issues = new ConcurrentBag<ScanIssue>();
-        var files = Discover(fullRoot, state.IgnoredFolders, issues, cancellationToken);
+        var files = Discover(fullRoot, issues, cancellationToken);
         var cache = _cacheFactory.Create(fullRoot);
         await cache.InitializeAsync(cancellationToken).ConfigureAwait(false);
         var cachedAssets = await cache.LoadAssetsAsync(cancellationToken).ConfigureAwait(false);
@@ -137,7 +135,6 @@ public sealed partial class MediaScanner(
 
     private static List<DiscoveredFile> Discover(
         string picturesRoot,
-        IReadOnlyList<IgnoredFolderRule> ignoredFolders,
         ConcurrentBag<ScanIssue> issues,
         CancellationToken cancellationToken)
     {
@@ -188,10 +185,6 @@ public sealed partial class MediaScanner(
 
                     var relativePath = PathRuleMatcher.NormalizeRelativePath(
                         Path.GetRelativePath(picturesRoot, absolutePath));
-                    if (PathRuleMatcher.IsIgnored(relativePath, ignoredFolders))
-                    {
-                        continue;
-                    }
 
                     try
                     {

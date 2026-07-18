@@ -27,10 +27,7 @@ public sealed class GroupingEngine(DecisionMatcher decisionMatcher)
         PhotoSorterState state,
         GroupingOptions options)
     {
-        var routineDecisions = state.RoutineLocations
-            .Where(static decision => decision.Disposition == RoutineLocationDisposition.Routine
-                && decision.SuppressCandidates)
-            .ToArray();
+        var routineDecisions = state.RoutineLocations.ToArray();
 
         var anchors = bundles
             .Where(static bundle => bundle.Location is not null)

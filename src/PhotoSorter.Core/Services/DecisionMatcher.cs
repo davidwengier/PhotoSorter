@@ -8,9 +8,7 @@ public sealed class DecisionMatcher
         GeoPoint point,
         IEnumerable<RoutineLocationDecision> decisions) =>
         decisions.Any(
-            decision => decision.Disposition == RoutineLocationDisposition.Routine
-                && decision.SuppressCandidates
-                && GeoMath.DistanceMeters(point, decision.Center) <= decision.RadiusMeters);
+            decision => GeoMath.DistanceMeters(point, decision.Center) <= decision.RadiusMeters);
 
     public bool IsIgnored(CandidateGroup candidate, IEnumerable<IgnoredGroupRule> rules)
     {

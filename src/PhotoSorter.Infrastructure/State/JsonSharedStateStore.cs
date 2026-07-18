@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using PhotoSorter.Core.Contracts;
 using PhotoSorter.Core.Models;
@@ -11,6 +12,7 @@ namespace PhotoSorter.Infrastructure.State;
 public sealed class JsonSharedStateStore : ISharedStateStore
 {
     public const string FileName = ".photosorter.json";
+    private const int LegacySchemaVersion = 1;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -33,10 +35,39 @@ public sealed class JsonSharedStateStore : ISharedStateStore
         CancellationToken cancellationToken = default)
     {
         var statePath = GetStatePath(picturesRoot);
-        var state = File.Exists(statePath)
-            ? await ReadAsync(statePath, cancellationToken).ConfigureAwait(false)
-            : new PhotoSorterState();
-        return WithoutLegacyPreferences(state);
+        if (!File.Exists(statePath))
+        {
+            return new PhotoSorterState();
+        }
+
+        var result = await ReadAsync(statePath, cancellationToken).ConfigureAwait(false);
+        if (!result.RequiresMigration)
+        {
+            return result.State;
+        }
+
+        await using var stateLock = await AcquireLockAsync(statePath, cancellationToken).ConfigureAwait(false);
+        if (!File.Exists(statePath))
+        {
+            return new PhotoSorterState();
+        }
+
+        result = await ReadAsync(statePath, cancellationToken).ConfigureAwait(false);
+        if (!result.RequiresMigration)
+        {
+            return result.State;
+        }
+
+        if (HasDecisions(result.State))
+        {
+            await WriteAsync(statePath, result.State, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            DeleteStateFile(statePath);
+        }
+
+        return result.State;
     }
 
     public async Task<PhotoSorterState> UpdateAsync(
@@ -49,11 +80,10 @@ public sealed class JsonSharedStateStore : ISharedStateStore
         var statePath = GetStatePath(picturesRoot);
         await using var stateLock = await AcquireLockAsync(statePath, cancellationToken).ConfigureAwait(false);
         var current = File.Exists(statePath)
-            ? await ReadAsync(statePath, cancellationToken).ConfigureAwait(false)
+            ? (await ReadAsync(statePath, cancellationToken).ConfigureAwait(false)).State
             : new PhotoSorterState();
-        var updated = WithoutLegacyPreferences(
-            update(WithoutLegacyPreferences(current))
-                ?? throw new StateFileException("The state update returned no state."));
+        var updated = update(current)
+            ?? throw new StateFileException("The state update returned no state.");
         ValidateState(updated, statePath);
         if (!HasDecisions(updated))
         {
@@ -65,7 +95,7 @@ public sealed class JsonSharedStateStore : ISharedStateStore
         return updated;
     }
 
-    private static async Task<PhotoSorterState> ReadAsync(
+    private static async Task<StateReadResult> ReadAsync(
         string statePath,
         CancellationToken cancellationToken)
     {
@@ -78,17 +108,36 @@ public sealed class JsonSharedStateStore : ISharedStateStore
                 FileShare.ReadWrite | FileShare.Delete,
                 bufferSize: 16 * 1024,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
-            var state = await JsonSerializer.DeserializeAsync<PhotoSorterState>(
+            var root = await JsonNode.ParseAsync(
                 stream,
-                SerializerOptions,
-                cancellationToken).ConfigureAwait(false);
-            if (state is null)
+                documentOptions: new JsonDocumentOptions
+                {
+                    AllowTrailingCommas = true,
+                    CommentHandling = JsonCommentHandling.Skip,
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (root is not JsonObject stateObject)
             {
                 throw new StateFileException($"'{statePath}' does not contain a JSON object.");
             }
 
+            var schemaVersion = ReadSchemaVersion(stateObject);
+            var requiresMigration = schemaVersion == LegacySchemaVersion;
+            if (requiresMigration)
+            {
+                MigrateVersion1(stateObject);
+            }
+            else if (schemaVersion != PhotoSorterState.CurrentSchemaVersion)
+            {
+                throw new StateFileException(
+                    $"'{statePath}' uses unsupported schemaVersion {schemaVersion}; "
+                    + $"supported versions are {LegacySchemaVersion} and {PhotoSorterState.CurrentSchemaVersion}.");
+            }
+
+            var state = stateObject.Deserialize<PhotoSorterState>(SerializerOptions)
+                ?? throw new StateFileException($"'{statePath}' does not contain a JSON object.");
             ValidateState(state, statePath);
-            return state;
+            return new StateReadResult(state, requiresMigration);
         }
         catch (StateFileException)
         {
@@ -197,15 +246,83 @@ public sealed class JsonSharedStateStore : ISharedStateStore
         }
     }
 
-    private static PhotoSorterState WithoutLegacyPreferences(PhotoSorterState state) =>
-        state.LegacyPreferences is null
-            ? state
-            : state with { LegacyPreferences = null };
-
     private static bool HasDecisions(PhotoSorterState state) =>
         state.RoutineLocations.Count > 0
-        || state.IgnoredFolders.Count > 0
         || state.IgnoredGroups.Count > 0;
+
+    private static int ReadSchemaVersion(JsonObject stateObject)
+    {
+        if (!stateObject.TryGetPropertyValue("schemaVersion", out var versionNode))
+        {
+            return LegacySchemaVersion;
+        }
+
+        if (versionNode is null)
+        {
+            throw new JsonException("schemaVersion cannot be null.");
+        }
+
+        return versionNode.Deserialize<int>(SerializerOptions);
+    }
+
+    private static void MigrateVersion1(JsonObject stateObject)
+    {
+        stateObject["schemaVersion"] = PhotoSorterState.CurrentSchemaVersion;
+        stateObject.Remove("ignoredFolders");
+        stateObject.Remove("preferences");
+
+        if (stateObject["routineLocations"] is not JsonArray routineLocations)
+        {
+            return;
+        }
+
+        foreach (var node in routineLocations.ToArray())
+        {
+            if (node is not JsonObject routineLocation)
+            {
+                continue;
+            }
+
+            var disposition = ReadLegacyDisposition(routineLocation);
+            var suppressCandidates = ReadLegacySuppression(routineLocation);
+            routineLocation.Remove("disposition");
+            routineLocation.Remove("suppressCandidates");
+            if (disposition != LegacyRoutineLocationDisposition.Routine || !suppressCandidates)
+            {
+                routineLocations.Remove(node);
+            }
+        }
+    }
+
+    private static LegacyRoutineLocationDisposition ReadLegacyDisposition(JsonObject routineLocation)
+    {
+        if (!routineLocation.TryGetPropertyValue("disposition", out var dispositionNode))
+        {
+            return LegacyRoutineLocationDisposition.Routine;
+        }
+
+        if (dispositionNode is null)
+        {
+            throw new JsonException("Routine location disposition cannot be null.");
+        }
+
+        return dispositionNode.Deserialize<LegacyRoutineLocationDisposition>(SerializerOptions);
+    }
+
+    private static bool ReadLegacySuppression(JsonObject routineLocation)
+    {
+        if (!routineLocation.TryGetPropertyValue("suppressCandidates", out var suppressionNode))
+        {
+            return true;
+        }
+
+        if (suppressionNode is null)
+        {
+            throw new JsonException("Routine location suppressCandidates cannot be null.");
+        }
+
+        return suppressionNode.Deserialize<bool>(SerializerOptions);
+    }
 
     private static void DeleteStateFile(string statePath)
     {
@@ -268,5 +385,13 @@ public sealed class JsonSharedStateStore : ISharedStateStore
             TryDelete(_path);
             GC.SuppressFinalize(this);
         }
+    }
+
+    private sealed record StateReadResult(PhotoSorterState State, bool RequiresMigration);
+
+    private enum LegacyRoutineLocationDisposition
+    {
+        Routine,
+        NotRoutine,
     }
 }

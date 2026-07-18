@@ -32,7 +32,7 @@ The only authoritative PhotoSorter state is:
 Pictures\.photosorter.json
 ```
 
-It is indented, versioned JSON designed to be readable and editable by hand. It stores only explicit ignore decisions. Scanning, automatic place naming, viewing photos, or editing an unfinished suggestion does not create or update the file. Removing the final saved decision removes the now-empty file.
+It is indented, versioned JSON designed to be readable and editable by hand. It stores only explicit ignore decisions. Scanning, automatic place naming, viewing photos, or editing an unfinished suggestion does not create or update the file. Removing the final saved decision removes the now-empty file. Older schemas are upgraded atomically when loaded; obsolete entries are discarded, and a file containing no remaining decisions is removed.
 
 All other data is disposable and machine-local:
 
