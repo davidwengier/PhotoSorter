@@ -9,6 +9,33 @@ public sealed class CandidateEditorTests
     private static readonly DateTimeOffset BaseTime = new(2023, 6, 1, 10, 0, 0, TimeSpan.Zero);
 
     [TestMethod]
+    public void FindMergeCandidates_MixedDatesAndYears_ReturnsSameYearByClosestGap()
+    {
+        var sut = new CandidateEditor();
+        var current = CreateCandidate([CreateBundle("current", BaseTime)], id: "current");
+        var nearestLater = CreateCandidate(
+            [CreateBundle("later", BaseTime.AddHours(2))],
+            id: "later");
+        var earlier = CreateCandidate(
+            [CreateBundle("earlier", BaseTime.AddHours(-4))],
+            id: "earlier");
+        var distantLater = CreateCandidate(
+            [CreateBundle("distant", BaseTime.AddDays(10))],
+            id: "distant");
+        var otherYear = CreateCandidate(
+            [CreateBundle("other-year", BaseTime.AddYears(1))],
+            id: "other-year");
+
+        var result = sut.FindMergeCandidates(
+            current,
+            [distantLater, otherYear, current, earlier, nearestLater]);
+
+        CollectionAssert.AreEqual(
+            new[] { "later", "earlier", "distant" },
+            result.Select(static candidate => candidate.Id).ToArray());
+    }
+
+    [TestMethod]
     public void SelectBundles_SubsetOfIds_ReturnsCandidateWithOnlySelectedBundles()
     {
         var sut = new CandidateEditor();
@@ -140,9 +167,10 @@ public sealed class CandidateEditorTests
 
     private static CandidateGroup CreateCandidate(
         IReadOnlyList<AssetBundle> bundles,
-        CandidateKind kind = CandidateKind.Event) => new()
+        CandidateKind kind = CandidateKind.Event,
+        string id = "candidate") => new()
         {
-            Id = "candidate",
+            Id = id,
             Kind = kind,
             Year = bundles[0].Year,
             Start = bundles.Min(static bundle => bundle.CapturedAt),

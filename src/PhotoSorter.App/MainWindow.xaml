@@ -370,8 +370,8 @@
                             <Button.ContextMenu>
                                 <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                     <MenuItem Header="Split before selected photo" Command="{Binding SplitCandidateCommand}" />
-                                    <MenuItem Header="Merge with next suggestion" Command="{Binding MergeNextCandidateCommand}" />
-                                    <MenuItem Header="Add nearby photos" Command="{Binding ExpandCandidateCommand}" />
+                                    <MenuItem Header="Merge another suggestion..." Click="OnMergeCandidateClick" />
+                                    <MenuItem Header="Add ungrouped photos within 2 hours" Command="{Binding ExpandCandidateCommand}" />
                                 </ContextMenu>
                             </Button.ContextMenu>
                         </Button>

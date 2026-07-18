@@ -323,36 +323,52 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
-    private void MergeNextCandidate()
+    public IReadOnlyList<CandidateViewModel> GetMergeCandidates()
     {
+        if (SelectedCandidate is null)
+        {
+            return [];
+        }
+
+        var visibleById = Candidates.ToDictionary(
+            static candidate => candidate.Model.Id,
+            StringComparer.Ordinal);
+        return _candidateEditor
+            .FindMergeCandidates(SelectedCandidate.Model, _candidateModels)
+            .Select(candidate => visibleById.GetValueOrDefault(candidate.Id)
+                ?? new CandidateViewModel(candidate))
+            .ToArray();
+    }
+
+    public void MergeCandidate(CandidateViewModel candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
         if (SelectedCandidate is null)
         {
             return;
         }
 
-        var ordered = _candidateModels.OrderBy(static candidate => candidate.Start).ToArray();
-        var index = Array.FindIndex(ordered, candidate => candidate.Id == SelectedCandidate.Model.Id);
-        var next = ordered.Skip(index + 1).FirstOrDefault(
-            candidate => candidate.Year == SelectedCandidate.Model.Year);
-        if (index < 0 || next is null)
-        {
-            _dialogs.ShowInformation("Merge candidates", "There is no later candidate in the same year.");
-            return;
-        }
+        var current = SelectedCandidate;
+        SaveCurrentDraft();
+        var merged = _candidateEditor.Merge(current.Model, candidate.Model);
+        var excluded = _excludedBundles.GetValueOrDefault(current.Model.Id, [])
+            .Concat(_excludedBundles.GetValueOrDefault(candidate.Model.Id, []))
+            .ToHashSet(StringComparer.Ordinal);
+        var destination = _destinationDrafts.GetValueOrDefault(
+            current.Model.Id,
+            DestinationFolderName);
 
-        if (!_dialogs.Confirm(
-                "Merge candidates",
-                $"Merge '{SelectedCandidate.Title}' with the candidate beginning {next.Start:g}?"))
-        {
-            return;
-        }
-
-        var merged = _candidateEditor.Merge(SelectedCandidate.Model, next);
         _candidateModels.RemoveAll(
-            candidate => candidate.Id == SelectedCandidate.Model.Id || candidate.Id == next.Id);
+            model => model.Id == current.Model.Id || model.Id == candidate.Model.Id);
         _candidateModels.Add(merged);
+        _excludedBundles[merged.Id] = excluded;
+        _destinationDrafts[merged.Id] = destination;
         ApplyCandidateFilters(merged.Id);
+        _excludedBundles.Remove(current.Model.Id);
+        _excludedBundles.Remove(candidate.Model.Id);
+        _destinationDrafts.Remove(current.Model.Id);
+        _destinationDrafts.Remove(candidate.Model.Id);
+        StartBackgroundNaming();
     }
 
     [RelayCommand]

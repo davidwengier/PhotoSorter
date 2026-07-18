@@ -59,4 +59,38 @@ public partial class MainWindow : Window
             button.ContextMenu.IsOpen = true;
         }
     }
+
+    private void OnMergeCandidateClick(object sender, RoutedEventArgs eventArgs)
+    {
+        var viewModel = (MainViewModel)DataContext;
+        if (viewModel.SelectedCandidate is not { } currentCandidate)
+        {
+            return;
+        }
+
+        var candidates = viewModel.GetMergeCandidates();
+        if (candidates.Count == 0)
+        {
+            MessageBox.Show(
+                this,
+                "There are no other suggestions in this year to merge.",
+                "Merge another suggestion",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var window = new MergeCandidateWindow(
+            currentCandidate,
+            candidates,
+            viewModel.PicturesRoot,
+            _previewWindowPlacementStore)
+        {
+            Owner = this,
+        };
+        if (window.ShowDialog() == true && window.CandidateToMerge is { } candidate)
+        {
+            viewModel.MergeCandidate(candidate);
+        }
+    }
 }

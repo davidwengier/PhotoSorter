@@ -144,7 +144,8 @@
                            TextTrimming="CharacterEllipsis"
                            ToolTip="{Binding Files}" />
 
-                <CheckBox Grid.RowSpan="4"
+                <CheckBox x:Name="IncludeCheckBox"
+                           Grid.RowSpan="4"
                           Grid.Column="2"
                           Margin="24,0,0,0"
                           VerticalAlignment="Center"

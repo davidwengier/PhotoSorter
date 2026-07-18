@@ -16,6 +16,7 @@ It clusters photos and linked media using capture time and GPS metadata. Suggest
 - Attaches suitable time-adjacent media that has no GPS.
 - Lets you ignore one suggestion or always ignore its named location directly from the review screen.
 - Opens any thumbnail in a large photo viewer with previous/next navigation and a synchronized include checkbox.
+- Lets you inspect chronologically nearby suggestions and their photos before merging groups.
 - Switches each photo group between a detailed list and an image-only grid.
 - Remembers the large viewer's size, position, and maximized state in the disposable machine-local cache.
 - Supports new or existing year-level destination folders.

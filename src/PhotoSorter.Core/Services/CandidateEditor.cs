@@ -4,6 +4,23 @@ namespace PhotoSorter.Core.Services;
 
 public sealed class CandidateEditor
 {
+    public IReadOnlyList<CandidateGroup> FindMergeCandidates(
+        CandidateGroup candidate,
+        IEnumerable<CandidateGroup> candidates)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        ArgumentNullException.ThrowIfNull(candidates);
+
+        return candidates
+            .Where(other => other.Year == candidate.Year
+                && !string.Equals(other.Id, candidate.Id, StringComparison.Ordinal))
+            .OrderBy(other => TemporalGap(candidate, other))
+            .ThenBy(other => other.Start < candidate.Start)
+            .ThenBy(static other => other.Start)
+            .ThenBy(static other => other.Id, StringComparer.Ordinal)
+            .ToArray();
+    }
+
     public CandidateGroup SelectBundles(
         CandidateGroup candidate,
         IEnumerable<string> includedBundleIds)
@@ -104,6 +121,18 @@ public sealed class CandidateEditor
             Bundles = ordered,
             Areas = areas,
         };
+    }
+
+    private static TimeSpan TemporalGap(CandidateGroup first, CandidateGroup second)
+    {
+        if (second.End < first.Start)
+        {
+            return first.Start - second.End;
+        }
+
+        return second.Start > first.End
+            ? second.Start - first.End
+            : TimeSpan.Zero;
     }
 
     private static IReadOnlyList<GeoCircle> CreateAreas(IReadOnlyList<AssetBundle> bundles)

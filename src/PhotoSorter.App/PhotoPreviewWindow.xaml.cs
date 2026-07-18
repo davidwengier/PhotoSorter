@@ -17,7 +17,8 @@ public partial class PhotoPreviewWindow : Window
     public PhotoPreviewWindow(
         IReadOnlyList<BundleViewModel> bundles,
         BundleViewModel initialBundle,
-        PreviewWindowPlacementStore placementStore)
+        PreviewWindowPlacementStore placementStore,
+        bool showIncludeToggle = true)
     {
         ArgumentNullException.ThrowIfNull(bundles);
         ArgumentNullException.ThrowIfNull(initialBundle);
@@ -32,6 +33,9 @@ public partial class PhotoPreviewWindow : Window
         _currentIndex = FindInitialIndex(initialBundle);
 
         InitializeComponent();
+        IncludeCheckBox.Visibility = showIncludeToggle
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         DataContext = _bundles[_currentIndex];
         ApplyPlacement(_placementStore.Load());
         UpdateNavigation();
