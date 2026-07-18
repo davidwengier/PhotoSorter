@@ -365,16 +365,8 @@
                         <Button Grid.Column="1"
                                 VerticalAlignment="Top"
                                 Style="{StaticResource QuietButtonStyle}"
-                                Click="OnMoreButtonClick"
-                                Content="More">
-                            <Button.ContextMenu>
-                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                    <MenuItem Header="Split before selected photo" Command="{Binding SplitCandidateCommand}" />
-                                    <MenuItem Header="Merge another suggestion..." Click="OnMergeCandidateClick" />
-                                    <MenuItem Header="Add ungrouped photos within 2 hours" Command="{Binding ExpandCandidateCommand}" />
-                                </ContextMenu>
-                            </Button.ContextMenu>
-                        </Button>
+                                Click="OnFindMoreClick"
+                                Content="Find More..." />
                     </Grid>
 
                     <Border Grid.Row="1"
@@ -572,13 +564,36 @@
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel>
                         <TextBlock Style="{StaticResource CaptionStyle}" Text="Source folder" />
-                        <TextBlock Margin="0,5,0,0"
-                                   FontFamily="Consolas"
-                                   FontSize="12"
-                                   Foreground="{StaticResource MutedTextBrush}"
-                                   Text="{Binding SourceFolderSummary}"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding SourceFolderDetails}" />
+                        <Grid Margin="0,5,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock VerticalAlignment="Center"
+                                       FontFamily="Consolas"
+                                       FontSize="12"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       Text="{Binding SourceFolderSummary}"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding SourceFolderDetails}" />
+                            <Button Grid.Column="1"
+                                    Margin="8,0,0,0"
+                                    MinHeight="28"
+                                    Padding="8,4"
+                                    Click="OnOpenSourceFolderClick"
+                                    Content="Open">
+                                <Button.Style>
+                                    <Style BasedOn="{StaticResource QuietButtonStyle}"
+                                           TargetType="Button">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SourceFolderPath}" Value="">
+                                                <Setter Property="IsEnabled" Value="False" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </Grid>
 
                         <Border Height="1"
                                 Margin="0,14"

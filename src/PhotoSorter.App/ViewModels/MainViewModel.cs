@@ -74,6 +74,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private string _sourceFolderDetails = string.Empty;
 
     [ObservableProperty]
+    private string _sourceFolderPath = string.Empty;
+
+    [ObservableProperty]
     private bool _isPhotoGridView;
 
     [ObservableProperty]
@@ -293,36 +296,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         await RegroupAsync();
     }
 
-    [RelayCommand]
-    private void SplitCandidate()
-    {
-        if (SelectedCandidate is null || SelectedBundle is null)
-        {
-            return;
-        }
-
-        try
-        {
-            var split = _candidateEditor.Split(
-                SelectedCandidate.Model,
-                SelectedBundle.Model.CapturedAt);
-            var index = _candidateModels.FindIndex(candidate => candidate.Id == SelectedCandidate.Model.Id);
-            if (index < 0)
-            {
-                return;
-            }
-
-            _candidateModels.RemoveAt(index);
-            _candidateModels.Insert(index, split.After);
-            _candidateModels.Insert(index, split.Before);
-            ApplyCandidateFilters(split.After.Id);
-        }
-        catch (ArgumentException exception)
-        {
-            _dialogs.ShowError("Split candidate", exception.Message);
-        }
-    }
-
     public IReadOnlyList<CandidateViewModel> GetMergeCandidates()
     {
         if (SelectedCandidate is null)
@@ -369,37 +342,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _destinationDrafts.Remove(current.Model.Id);
         _destinationDrafts.Remove(candidate.Model.Id);
         StartBackgroundNaming();
-    }
-
-    [RelayCommand]
-    private void ExpandCandidate()
-    {
-        if (SelectedCandidate is null || _scanResult is null)
-        {
-            return;
-        }
-
-        var assigned = _candidateModels
-            .SelectMany(static candidate => candidate.Bundles)
-            .Select(static bundle => bundle.Id)
-            .ToHashSet(StringComparer.Ordinal);
-        var padding = TimeSpan.FromHours(2);
-        var nearby = _scanResult.Bundles
-            .Where(bundle => bundle.Year == SelectedCandidate.Model.Year)
-            .Where(bundle => !assigned.Contains(bundle.Id))
-            .Where(static bundle => bundle.TimestampConfidence >= MetadataConfidence.Medium)
-            .Where(bundle => bundle.CapturedAt >= SelectedCandidate.Model.Start - padding
-                && bundle.CapturedAt <= SelectedCandidate.Model.End + padding)
-            .ToArray();
-        if (nearby.Length == 0)
-        {
-            _dialogs.ShowInformation("Expand candidate", "No unassigned time-adjacent items were found.");
-            return;
-        }
-
-        var expanded = _candidateEditor.AddBundles(SelectedCandidate.Model, nearby);
-        ReplaceCandidate(SelectedCandidate.Model.Id, expanded);
-        ApplyCandidateFilters(expanded.Id);
     }
 
     [RelayCommand]
@@ -493,6 +435,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             DestinationPrefix = string.Empty;
             SourceFolderSummary = string.Empty;
             SourceFolderDetails = string.Empty;
+            SourceFolderPath = string.Empty;
             return;
         }
 
@@ -714,6 +657,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             1 => relativeFolders[0],
             _ => $"{relativeFolders[0]} (+{relativeFolders.Length - 1:N0} more)",
         };
+        SourceFolderPath = relativeFolders.Length == 0
+            ? string.Empty
+            : Path.Combine(PicturesRoot, relativeFolders[0]);
         SourceFolderDetails = string.Join(
             Environment.NewLine,
             relativeFolders.Select(folder => Path.Combine(PicturesRoot, folder)));

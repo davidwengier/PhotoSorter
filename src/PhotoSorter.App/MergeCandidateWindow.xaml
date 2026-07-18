@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:PhotoSorter.App.Controls"
-        Title="Merge another suggestion"
+        Title="Find More"
         Icon="Assets/PhotoSorter.ico"
         Width="1180"
         Height="780"
@@ -69,7 +69,7 @@
             <StackPanel>
                 <TextBlock FontSize="22"
                            FontWeight="SemiBold"
-                           Text="Merge another suggestion" />
+                           Text="Find more photos for this group" />
                 <TextBlock Margin="0,5,0,0"
                            Foreground="{StaticResource MutedTextBrush}"
                            TextWrapping="Wrap">
@@ -276,7 +276,7 @@
                         Style="{StaticResource PrimaryButtonStyle}"
                         IsDefault="True"
                         Click="OnMergeClick"
-                        Content="Merge selected group" />
+                        Content="Add selected group" />
             </Grid>
         </Border>
     </Grid>

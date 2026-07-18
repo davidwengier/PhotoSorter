@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using PhotoSorter.App.ViewModels;
 using PhotoSorter.Infrastructure.Cache;
 
@@ -51,16 +53,7 @@ public partial class MainWindow : Window
         window.ShowDialog();
     }
 
-    private void OnMoreButtonClick(object sender, RoutedEventArgs eventArgs)
-    {
-        if (sender is Button { ContextMenu: not null } button)
-        {
-            button.ContextMenu.PlacementTarget = button;
-            button.ContextMenu.IsOpen = true;
-        }
-    }
-
-    private void OnMergeCandidateClick(object sender, RoutedEventArgs eventArgs)
+    private void OnFindMoreClick(object sender, RoutedEventArgs eventArgs)
     {
         var viewModel = (MainViewModel)DataContext;
         if (viewModel.SelectedCandidate is not { } currentCandidate)
@@ -73,8 +66,8 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 this,
-                "There are no other suggestions in this year to merge.",
-                "Merge another suggestion",
+                "There are no other suggestions in this year.",
+                "Find More",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             return;
@@ -91,6 +84,47 @@ public partial class MainWindow : Window
         if (window.ShowDialog() == true && window.CandidateToMerge is { } candidate)
         {
             viewModel.MergeCandidate(candidate);
+        }
+    }
+
+    private void OnOpenSourceFolderClick(object sender, RoutedEventArgs eventArgs)
+    {
+        var sourceFolder = ((MainViewModel)DataContext).SourceFolderPath;
+        if (string.IsNullOrWhiteSpace(sourceFolder))
+        {
+            return;
+        }
+
+        if (!Directory.Exists(sourceFolder))
+        {
+            MessageBox.Show(
+                this,
+                $"The source folder '{sourceFolder}' no longer exists.",
+                "Open source folder",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            return;
+        }
+
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = sourceFolder,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception exception) when (exception is Win32Exception
+            or IOException
+            or UnauthorizedAccessException
+            or InvalidOperationException)
+        {
+            MessageBox.Show(
+                this,
+                exception.Message,
+                "Open source folder",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
     }
 }
