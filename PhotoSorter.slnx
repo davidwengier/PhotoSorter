@@ -10,6 +10,7 @@
     <Project Path="src/PhotoSorter.Infrastructure/PhotoSorter.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/PhotoSorter.App.Tests/PhotoSorter.App.Tests.csproj" />
     <Project Path="tests/PhotoSorter.Core.Tests/PhotoSorter.Core.Tests.csproj" />
     <Project Path="tests/PhotoSorter.Infrastructure.Tests/PhotoSorter.Infrastructure.Tests.csproj" />
   </Folder>

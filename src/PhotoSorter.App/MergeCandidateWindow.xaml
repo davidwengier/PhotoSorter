@@ -74,11 +74,12 @@
                            Foreground="{StaticResource MutedTextBrush}"
                            TextWrapping="Wrap">
                     <Run Text="Current group: " />
-                    <Run FontWeight="SemiBold" Text="{Binding CurrentCandidate.Title}" />
+                    <Run FontWeight="SemiBold"
+                         Text="{Binding CurrentCandidate.Title, Mode=OneWay}" />
                     <Run Text=" · " />
-                    <Run Text="{Binding CurrentCandidate.Period}" />
+                    <Run Text="{Binding CurrentCandidate.Period, Mode=OneWay}" />
                     <Run Text=" · " />
-                    <Run Text="{Binding CurrentCandidate.Summary}" />
+                    <Run Text="{Binding CurrentCandidate.Summary, Mode=OneWay}" />
                 </TextBlock>
             </StackPanel>
         </Border>
