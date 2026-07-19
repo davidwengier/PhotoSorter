@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Windows.Threading;
 using PhotoSorter.App.ViewModels;
 using PhotoSorter.Infrastructure.Cache;
 
@@ -52,6 +53,12 @@ public partial class MainWindow : Window
         };
         window.ShowDialog();
     }
+
+    private void OnCandidateSelectionChanged(object sender, SelectionChangedEventArgs eventArgs) =>
+        ScrollToTopAfterLayout(PhotoList, PhotoGrid);
+
+    private void OnYearFilterSelectionChanged(object sender, SelectionChangedEventArgs eventArgs) =>
+        ScrollToTopAfterLayout(CandidateList);
 
     private void OnFindMoreClick(object sender, RoutedEventArgs eventArgs)
     {
@@ -126,5 +133,21 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
+    }
+
+    private void ScrollToTopAfterLayout(params ListBox[] lists)
+    {
+        _ = Dispatcher.InvokeAsync(
+                () =>
+                {
+                    foreach (var list in lists)
+                    {
+                        if (list.Items.Count > 0)
+                        {
+                            list.ScrollIntoView(list.Items[0]);
+                        }
+                    }
+                },
+                DispatcherPriority.Loaded);
     }
 }

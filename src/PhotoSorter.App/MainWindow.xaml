@@ -263,12 +263,15 @@
                                   Padding="8,2"
                                   VerticalAlignment="Center"
                                   ItemsSource="{Binding YearFilters}"
+                                  SelectionChanged="OnYearFilterSelectionChanged"
                                   SelectedItem="{Binding SelectedYearFilter}" />
                     </Grid>
 
                     <Grid Grid.Row="1">
-                        <ListBox ItemsSource="{Binding Candidates}"
+                        <ListBox x:Name="CandidateList"
+                                 ItemsSource="{Binding Candidates}"
                                  ItemContainerStyle="{StaticResource CandidateItemStyle}"
+                                 SelectionChanged="OnCandidateSelectionChanged"
                                  SelectedItem="{Binding SelectedCandidate}"
                                  ScrollViewer.CanContentScroll="True"
                                  VirtualizingPanel.IsVirtualizing="True"
@@ -419,7 +422,8 @@
                         </StackPanel>
                     </Grid>
 
-                    <ListBox Grid.Row="3"
+                    <ListBox x:Name="PhotoList"
+                             Grid.Row="3"
                              ItemsSource="{Binding SelectedBundles}"
                              ItemContainerStyle="{StaticResource PhotoItemStyle}"
                              SelectedItem="{Binding SelectedBundle}"
@@ -499,7 +503,8 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <ListBox Grid.Row="3"
+                    <ListBox x:Name="PhotoGrid"
+                             Grid.Row="3"
                              ItemsSource="{Binding SelectedBundles}"
                              ItemContainerStyle="{StaticResource PhotoGridItemStyle}"
                              SelectedItem="{Binding SelectedBundle}"
