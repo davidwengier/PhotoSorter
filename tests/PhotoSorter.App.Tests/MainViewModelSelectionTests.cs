@@ -36,16 +36,43 @@ public sealed class MainViewModelSelectionTests
         Assert.AreEqual("2 of 3 items included", viewModel.IncludedItemsSummary);
     }
 
-    private static CandidateGroup CreateCandidate()
+    [TestMethod]
+    public void ResolveCandidateSelection_CurrentRemoved_SelectsNextSurvivingCandidate()
+    {
+        var first = new CandidateViewModel(CreateCandidate("first"));
+        var later = new CandidateViewModel(CreateCandidate("later"));
+
+        var selected = MainViewModel.ResolveCandidateSelection(
+            [first, later],
+            "current",
+            ["next", "later", "first"]);
+
+        Assert.AreSame(later, selected);
+    }
+
+    [TestMethod]
+    public void ResolveCandidateSelection_NoLaterCandidate_SelectsPreviousCandidate()
+    {
+        var previous = new CandidateViewModel(CreateCandidate("previous"));
+
+        var selected = MainViewModel.ResolveCandidateSelection(
+            [previous],
+            "current",
+            ["next", "previous"]);
+
+        Assert.AreSame(previous, selected);
+    }
+
+    private static CandidateGroup CreateCandidate(string id = "candidate")
     {
         var capturedAt = new DateTimeOffset(2023, 6, 1, 10, 0, 0, TimeSpan.Zero);
         var bundles = Enumerable.Range(1, 3)
             .Select(index => new AssetBundle(
-                $"bundle-{index}",
+                $"{id}-bundle-{index}",
                 [
                     new MediaAsset
                     {
-                        RelativePath = $@"2023\Phone Images\photo-{index}.jpg",
+                        RelativePath = $@"2023\Phone Images\{id}-photo-{index}.jpg",
                         Year = 2023,
                         Extension = ".jpg",
                         Kind = MediaKind.Image,
@@ -56,7 +83,7 @@ public sealed class MainViewModelSelectionTests
             .ToArray();
         return new CandidateGroup
         {
-            Id = "candidate",
+            Id = id,
             Kind = CandidateKind.Event,
             Year = 2023,
             Start = bundles[0].CapturedAt,

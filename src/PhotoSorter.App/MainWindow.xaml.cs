@@ -57,8 +57,14 @@ public partial class MainWindow : Window
     private void OnCandidateSelectionChanged(object sender, SelectionChangedEventArgs eventArgs) =>
         ScrollToTopAfterLayout(PhotoList, PhotoGrid);
 
-    private void OnYearFilterSelectionChanged(object sender, SelectionChangedEventArgs eventArgs) =>
-        ScrollToTopAfterLayout(CandidateList);
+    private void OnYearFilterSelectionChanged(object sender, SelectionChangedEventArgs eventArgs)
+    {
+        if (sender is ComboBox comboBox
+            && (comboBox.IsDropDownOpen || comboBox.IsKeyboardFocusWithin))
+        {
+            ScrollToTopAfterLayout(CandidateList);
+        }
+    }
 
     private void OnFindMoreClick(object sender, RoutedEventArgs eventArgs)
     {

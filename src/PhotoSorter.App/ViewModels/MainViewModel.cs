@@ -34,6 +34,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly List<CandidateGroup> _candidateModels = [];
     private readonly HashSet<string> _pendingPlaceNames = new(StringComparer.Ordinal);
 
+    private bool _isRefreshingYearFilters;
     private CancellationTokenSource? _scanCancellation;
     private CancellationTokenSource? _namingCancellation;
     private readonly CancellationTokenSource _updateCancellation = new();
@@ -259,6 +260,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var selectionPreference = CaptureCandidateSelectionPreference();
         if (!await PersistStateAsync(state => state with
         {
             IgnoredGroups = [.. state.IgnoredGroups, rule],
@@ -267,7 +269,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        await RegroupAsync();
+        await RegroupAsync(selectionPreference);
     }
 
     [RelayCommand]
@@ -290,6 +292,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var selectionPreference = CaptureCandidateSelectionPreference();
         var area = SelectedCandidate.Model.Areas[0];
         var decision = new RoutineLocationDecision
         {
@@ -305,7 +308,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        await RegroupAsync();
+        await RegroupAsync(selectionPreference);
     }
 
     public IReadOnlyList<CandidateViewModel> GetMergeCandidates()
@@ -416,6 +419,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var selectionPreference = CaptureCandidateSelectionPreference();
         IsBusy = true;
         try
         {
@@ -444,7 +448,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             ProgressPercent = 0;
         }
 
-        await ScanCurrentRootAsync();
+        await ScanCurrentRootAsync(selectionPreference);
     }
 
     partial void OnSelectedCandidateChanging(CandidateViewModel? value) => SaveCurrentDraft();
@@ -494,7 +498,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             ?? CreateSuggestedFolderName(value.Model);
     }
 
-    partial void OnSelectedYearFilterChanged(string value) => ApplyCandidateFilters();
+    partial void OnSelectedYearFilterChanged(string value)
+    {
+        if (!_isRefreshingYearFilters)
+        {
+            ApplyCandidateFilters();
+        }
+    }
 
     partial void OnDestinationFolderNameChanged(string value) => SaveCurrentDraft();
 
@@ -504,7 +514,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     partial void OnIsPhotoGridViewChanged(bool value) => OnPropertyChanged(nameof(IsPhotoListView));
 
-    private async Task ScanCurrentRootAsync()
+    private async Task ScanCurrentRootAsync(CandidateSelectionPreference? selectionPreference = null)
     {
         if (IsBusy || string.IsNullOrWhiteSpace(PicturesRoot))
         {
@@ -555,7 +565,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var grouping = await Task.Run(
                 () => _groupingEngine.Analyze(_scanResult.Bundles, _state),
                 _scanCancellation.Token);
-            SetGrouping(grouping);
+            SetGrouping(grouping, selectionPreference);
 
             StatusMessage =
                 $"Indexed {_scanResult.Assets.Count:N0} files: "
@@ -585,7 +595,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task RegroupAsync()
+    private async Task RegroupAsync(CandidateSelectionPreference? selectionPreference)
     {
         if (_scanResult is null || _state is null)
         {
@@ -593,11 +603,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         var grouping = await Task.Run(() => _groupingEngine.Analyze(_scanResult.Bundles, _state));
-        SetGrouping(grouping);
+        SetGrouping(grouping, selectionPreference);
         StatusMessage = $"Updated suggestions: {Candidates.Count:N0} groups.";
     }
 
-    private void SetGrouping(GroupingResult grouping)
+    private void SetGrouping(
+        GroupingResult grouping,
+        CandidateSelectionPreference? selectionPreference = null)
     {
         _candidateModels.Clear();
         _candidateModels.AddRange(grouping.Candidates);
@@ -605,11 +617,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _destinationDrafts.Clear();
 
         RefreshYearFilters();
-        ApplyCandidateFilters();
+        ApplyCandidateFilters(selectionPreference: selectionPreference);
         StartBackgroundNaming();
     }
 
-    private void ApplyCandidateFilters(string? preferredCandidateId = null)
+    private void ApplyCandidateFilters(
+        string? preferredCandidateId = null,
+        CandidateSelectionPreference? selectionPreference = null)
     {
         preferredCandidateId ??= SelectedCandidate?.Model.Id;
         var selectedYear = int.TryParse(
@@ -636,22 +650,86 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         EmptyStateMessage = _scanResult is null
             ? "Choose a Pictures folder to find photo groups."
             : "No photo groups need your attention.";
-        SelectedCandidate = Candidates.FirstOrDefault(
-                candidate => candidate.Model.Id == preferredCandidateId)
-            ?? Candidates.FirstOrDefault();
+        SelectedCandidate = selectionPreference is null
+            ? Candidates.FirstOrDefault(candidate => candidate.Model.Id == preferredCandidateId)
+                ?? Candidates.FirstOrDefault()
+            : ResolveCandidateSelection(
+                    Candidates,
+                    selectionPreference.CurrentCandidateId,
+                    selectionPreference.FallbackCandidateIds)
+                ?? Candidates.FirstOrDefault();
+    }
+
+    internal static CandidateViewModel? ResolveCandidateSelection(
+        IReadOnlyList<CandidateViewModel> candidates,
+        string currentCandidateId,
+        IReadOnlyList<string> fallbackCandidateIds)
+    {
+        ArgumentNullException.ThrowIfNull(candidates);
+        ArgumentException.ThrowIfNullOrWhiteSpace(currentCandidateId);
+        ArgumentNullException.ThrowIfNull(fallbackCandidateIds);
+
+        var candidatesById = candidates.ToDictionary(
+            static candidate => candidate.Model.Id,
+            StringComparer.Ordinal);
+        if (candidatesById.TryGetValue(currentCandidateId, out var current))
+        {
+            return current;
+        }
+
+        foreach (var candidateId in fallbackCandidateIds)
+        {
+            if (candidatesById.TryGetValue(candidateId, out var candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private CandidateSelectionPreference? CaptureCandidateSelectionPreference()
+    {
+        if (SelectedCandidate is null)
+        {
+            return null;
+        }
+
+        var selectedIndex = Candidates.IndexOf(SelectedCandidate);
+        IReadOnlyList<string> fallbackCandidateIds = selectedIndex < 0
+            ? []
+            : Candidates
+                .Skip(selectedIndex + 1)
+                .Concat(Candidates.Take(selectedIndex).Reverse())
+                .Select(static candidate => candidate.Model.Id)
+                .ToArray();
+        return new CandidateSelectionPreference(
+            SelectedCandidate.Model.Id,
+            fallbackCandidateIds);
     }
 
     private void RefreshYearFilters()
     {
         var previous = SelectedYearFilter;
-        YearFilters.Clear();
-        YearFilters.Add(AllYears);
-        foreach (var year in _candidateModels.Select(static candidate => candidate.Year).Distinct().OrderDescending())
+        _isRefreshingYearFilters = true;
+        try
         {
-            YearFilters.Add(year.ToString(CultureInfo.InvariantCulture));
-        }
+            YearFilters.Clear();
+            YearFilters.Add(AllYears);
+            foreach (var year in _candidateModels
+                         .Select(static candidate => candidate.Year)
+                         .Distinct()
+                         .OrderDescending())
+            {
+                YearFilters.Add(year.ToString(CultureInfo.InvariantCulture));
+            }
 
-        SelectedYearFilter = YearFilters.Contains(previous) ? previous : AllYears;
+            SelectedYearFilter = YearFilters.Contains(previous) ? previous : AllYears;
+        }
+        finally
+        {
+            _isRefreshingYearFilters = false;
+        }
     }
 
     private void RefreshExistingFolders(int year)
@@ -1092,4 +1170,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             or DbException
             or HttpRequestException
             or System.Text.Json.JsonException;
+
+    private sealed record CandidateSelectionPreference(
+        string CurrentCandidateId,
+        IReadOnlyList<string> FallbackCandidateIds);
 }
