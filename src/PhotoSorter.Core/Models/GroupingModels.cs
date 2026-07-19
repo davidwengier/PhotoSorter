@@ -12,13 +12,13 @@ public sealed record GroupingOptions
 
     public double EventMaximumGapHours { get; init; } = 8;
 
-    public int EventMinimumAnchors { get; init; } = 3;
+    public int EventMinimumAnchors { get; init; } = 5;
 
     public double TripMaximumGapHours { get; init; } = 30;
 
     public double TripMinimumMovementMeters { get; init; } = 5_000;
 
-    public double TripMinimumDurationHours { get; init; } = 12;
+    public double TripMinimumDurationHours { get; init; } = 6;
 
     public double TripRoutineDistanceMeters { get; init; } = 25_000;
 
