@@ -401,7 +401,7 @@
                             <TextBlock Margin="0,0,12,0"
                                        VerticalAlignment="Center"
                                        Foreground="{StaticResource MutedTextBrush}"
-                                       Text="{Binding SelectedCandidate.Summary}" />
+                                       Text="{Binding IncludedItemsSummary}" />
                             <Border Padding="2"
                                     Background="#EEF0F6"
                                     CornerRadius="8">

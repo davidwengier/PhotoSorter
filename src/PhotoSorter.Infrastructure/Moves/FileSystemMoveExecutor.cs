@@ -14,6 +14,7 @@ public sealed class FileSystemMoveExecutor : IMoveExecutor
 
         var errors = new List<string>();
         var equivalentDestinationEntries = new List<MovePlanEntry>();
+        var conflictingDestinationEntries = new List<MovePlanEntry>();
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(plan.PicturesRoot));
         if (!Directory.Exists(root))
         {
@@ -22,6 +23,7 @@ public sealed class FileSystemMoveExecutor : IMoveExecutor
             {
                 Errors = errors,
                 EquivalentDestinationEntries = equivalentDestinationEntries,
+                ConflictingDestinationEntries = conflictingDestinationEntries,
             });
         }
 
@@ -109,9 +111,7 @@ public sealed class FileSystemMoveExecutor : IMoveExecutor
                 }
                 else
                 {
-                    errors.Add(
-                        $"Destination already exists but does not match the source name, size, and "
-                        + $"modified date/time: {entry.DestinationRelativePath}");
+                    conflictingDestinationEntries.Add(entry);
                 }
             }
 
@@ -121,10 +121,23 @@ public sealed class FileSystemMoveExecutor : IMoveExecutor
             }
         }
 
+        var conflictingBundleIds = conflictingDestinationEntries
+            .Select(static entry => entry.BundleId)
+            .ToHashSet(StringComparer.Ordinal);
+        if (conflictingBundleIds.Count > 0)
+        {
+            equivalentDestinationEntries.RemoveAll(
+                entry => conflictingBundleIds.Contains(entry.BundleId));
+            conflictingDestinationEntries.Clear();
+            conflictingDestinationEntries.AddRange(
+                plan.Entries.Where(entry => conflictingBundleIds.Contains(entry.BundleId)));
+        }
+
         return Task.FromResult(new MovePreflightResult
         {
             Errors = errors,
             EquivalentDestinationEntries = equivalentDestinationEntries,
+            ConflictingDestinationEntries = conflictingDestinationEntries,
         });
     }
 
@@ -154,12 +167,30 @@ public sealed class FileSystemMoveExecutor : IMoveExecutor
                     .ToArray());
         }
 
+        if (preflight.ConflictingDestinationEntries.Count > 0 && !options.SkipDestinationConflicts)
+        {
+            return BuildPreflightFailure(
+                plan,
+                preflight.ConflictingDestinationEntries
+                    .Select(static entry =>
+                        $"Destination already exists but does not match the source name, size, and "
+                        + $"modified date/time: {entry.DestinationRelativePath}")
+                    .ToArray());
+        }
+
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(plan.PicturesRoot));
         Directory.CreateDirectory(Path.Combine(root, plan.DestinationDirectoryRelativePath));
         var results = new List<MoveItemResult>(plan.Entries.Count);
-        var equivalentSources = preflight.EquivalentDestinationEntries
-            .Select(static entry => entry.SourceRelativePath)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var conflictingBundleIds = preflight.ConflictingDestinationEntries
+            .Select(static entry => entry.BundleId)
+            .ToHashSet(StringComparer.Ordinal);
+        var entriesByBundle = plan.Entries
+            .GroupBy(static entry => entry.BundleId, StringComparer.Ordinal)
+            .ToDictionary(
+                static group => group.Key,
+                static group => group.ToArray(),
+                StringComparer.Ordinal);
+        var checkedBundleIds = new HashSet<string>(StringComparer.Ordinal);
 
         for (var index = 0; index < plan.Entries.Count; index++)
         {
@@ -178,17 +209,29 @@ public sealed class FileSystemMoveExecutor : IMoveExecutor
 
             try
             {
-                var source = Path.Combine(root, entry.SourceRelativePath);
-                var destination = Path.Combine(root, entry.DestinationRelativePath);
-                var status = MoveItemStatus.Moved;
-                if (equivalentSources.Contains(entry.SourceRelativePath))
+                if (!conflictingBundleIds.Contains(entry.BundleId)
+                    && checkedBundleIds.Add(entry.BundleId)
+                    && HasDestinationConflict(entriesByBundle[entry.BundleId], root))
                 {
-                    DeleteEquivalentSource(entry, source, destination);
-                    status = MoveItemStatus.DeletedEquivalentSource;
+                    if (!options.SkipDestinationConflicts)
+                    {
+                        throw new IOException(
+                            $"A destination conflict appeared while processing bundle '{entry.BundleId}'.");
+                    }
+
+                    conflictingBundleIds.Add(entry.BundleId);
                 }
-                else
+
+                var status = MoveItemStatus.SkippedDestinationConflict;
+                if (!conflictingBundleIds.Contains(entry.BundleId))
                 {
-                    File.Move(source, destination, overwrite: false);
+                    var source = Path.Combine(root, entry.SourceRelativePath);
+                    var destination = Path.Combine(root, entry.DestinationRelativePath);
+                    status = ProcessEntry(entry, source, destination, options);
+                    if (status == MoveItemStatus.SkippedDestinationConflict)
+                    {
+                        conflictingBundleIds.Add(entry.BundleId);
+                    }
                 }
 
                 results.Add(new MoveItemResult
@@ -214,34 +257,80 @@ public sealed class FileSystemMoveExecutor : IMoveExecutor
         return new MoveExecutionResult { Items = results };
     }
 
-    private static void DeleteEquivalentSource(
+    private static MoveItemStatus ProcessEntry(
         MovePlanEntry entry,
         string source,
-        string destination)
+        string destination,
+        MoveExecutionOptions options)
+    {
+        var sourceInfo = GetValidatedSourceInfo(entry, source);
+
+        if (!File.Exists(destination))
+        {
+            File.Move(source, destination, overwrite: false);
+            return MoveItemStatus.Moved;
+        }
+
+        var destinationInfo = new FileInfo(destination);
+        if (AreEquivalent(sourceInfo, destinationInfo))
+        {
+            if (!options.DeleteEquivalentSources)
+            {
+                throw new IOException(
+                    $"Destination contains an equivalent file, but source deletion was not approved: "
+                    + entry.DestinationRelativePath);
+            }
+
+            File.Delete(source);
+            return MoveItemStatus.DeletedEquivalentSource;
+        }
+
+        if (options.SkipDestinationConflicts)
+        {
+            return MoveItemStatus.SkippedDestinationConflict;
+        }
+
+        throw new IOException(
+            $"Destination already exists but does not match the source name, size, and "
+            + $"modified date/time: {entry.DestinationRelativePath}");
+    }
+
+    private static bool HasDestinationConflict(
+        IReadOnlyList<MovePlanEntry> entries,
+        string root)
+    {
+        foreach (var entry in entries)
+        {
+            var source = Path.Combine(root, entry.SourceRelativePath);
+            var destination = Path.Combine(root, entry.DestinationRelativePath);
+            var sourceInfo = GetValidatedSourceInfo(entry, source);
+            if (File.Exists(destination)
+                && !AreEquivalent(sourceInfo, new FileInfo(destination)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static FileInfo GetValidatedSourceInfo(MovePlanEntry entry, string source)
     {
         if (!File.Exists(source))
         {
             throw new IOException($"Source file no longer exists: {entry.SourceRelativePath}");
         }
 
-        if (!File.Exists(destination))
-        {
-            throw new IOException(
-                $"Equivalent destination file no longer exists: {entry.DestinationRelativePath}");
-        }
-
         var sourceInfo = new FileInfo(source);
-        var destinationInfo = new FileInfo(destination);
         var actualWriteTime = new DateTimeOffset(sourceInfo.LastWriteTimeUtc, TimeSpan.Zero);
         if (sourceInfo.Length != entry.ExpectedLength
-            || actualWriteTime.UtcTicks != entry.ExpectedLastWriteTimeUtc.UtcTicks
-            || !AreEquivalent(sourceInfo, destinationInfo))
+            || actualWriteTime.UtcTicks != entry.ExpectedLastWriteTimeUtc.UtcTicks)
         {
             throw new IOException(
-                $"Source and destination are no longer equivalent: {entry.SourceRelativePath}");
+                $"Source file changed after planning: {entry.SourceRelativePath}");
         }
 
-        File.Delete(source);
+        return sourceInfo;
     }
 
     private static bool AreEquivalent(FileInfo source, FileInfo destination) =>

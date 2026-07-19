@@ -37,18 +37,23 @@ public sealed record MovePreflightResult
 
     public IReadOnlyList<MovePlanEntry> EquivalentDestinationEntries { get; init; } = [];
 
+    public IReadOnlyList<MovePlanEntry> ConflictingDestinationEntries { get; init; } = [];
+
     public bool IsValid => Errors.Count == 0;
 }
 
 public sealed record MoveExecutionOptions
 {
     public bool DeleteEquivalentSources { get; init; }
+
+    public bool SkipDestinationConflicts { get; init; }
 }
 
 public enum MoveItemStatus
 {
     Moved,
     DeletedEquivalentSource,
+    SkippedDestinationConflict,
     Failed,
     NotAttempted,
 }
@@ -68,5 +73,6 @@ public sealed record MoveExecutionResult
 
     public bool Succeeded => Items.Count > 0
         && Items.All(static item => item.Status is MoveItemStatus.Moved
-            or MoveItemStatus.DeletedEquivalentSource);
+            or MoveItemStatus.DeletedEquivalentSource
+            or MoveItemStatus.SkippedDestinationConflict);
 }

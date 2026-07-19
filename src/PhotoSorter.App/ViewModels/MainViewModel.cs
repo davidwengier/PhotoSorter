@@ -131,6 +131,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public string Attribution => _reverseGeocoder.Attribution;
 
+    public string IncludedItemsSummary
+    {
+        get
+        {
+            if (SelectedCandidate is null)
+            {
+                return string.Empty;
+            }
+
+            var included = SelectedBundles.Count(static bundle => bundle.IsIncluded);
+            return $"{included:N0} of {SelectedBundles.Count:N0} items included";
+        }
+    }
+
     public bool IsPhotoListView
     {
         get => !IsPhotoGridView;
@@ -384,10 +398,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         var equivalentCount = preflight.EquivalentDestinationEntries.Count;
+        var conflictCount = preflight.ConflictingDestinationEntries.Count;
+        var actionableCount = plan.Entries.Count - conflictCount;
+        if (actionableCount == 0)
+        {
+            _dialogs.ShowInformation(
+                "Nothing to move",
+                $"All {conflictCount:N0} selected files belong to items with destination conflicts. "
+                + "They remain in the source folder.");
+            return;
+        }
+
         if (!_dialogs.Confirm(
-                equivalentCount > 0
-                    ? "Delete equivalent source files"
-                    : "Name and move these photos",
+                GetMoveConfirmationTitle(equivalentCount, conflictCount),
                 BuildMoveConfirmationMessage(plan, preflight)))
         {
             return;
@@ -402,12 +425,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 new MoveExecutionOptions
                 {
                     DeleteEquivalentSources = equivalentCount > 0,
+                    SkipDestinationConflicts = true,
                 },
                 new Progress<int>(value => ProgressPercent = value));
 
             if (!result.Succeeded)
             {
                 _dialogs.ShowError("Operation stopped", BuildMoveFailureMessage(result));
+            }
+            else
+            {
+                ShowSkippedConflictSummary(result);
             }
         }
         finally
@@ -439,6 +467,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             SourceFolderSummary = string.Empty;
             SourceFolderDetails = string.Empty;
             SourceFolderPath = string.Empty;
+            OnPropertyChanged(nameof(IncludedItemsSummary));
             return;
         }
 
@@ -455,6 +484,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         SelectedBundle = SelectedBundles.FirstOrDefault();
+        OnPropertyChanged(nameof(IncludedItemsSummary));
         RefreshExistingFolders(value.Model.Year);
         DestinationPrefix = Path.Combine(
                 PicturesRoot,
@@ -868,6 +898,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var deleted = result.Items
             .Where(static item => item.Status == MoveItemStatus.DeletedEquivalentSource)
             .ToArray();
+        var skipped = result.Items
+            .Where(static item => item.Status == MoveItemStatus.SkippedDestinationConflict)
+            .ToArray();
         var failed = result.Items.FirstOrDefault(static item => item.Status == MoveItemStatus.Failed);
         var notAttempted = result.Items
             .Where(static item => item.Status == MoveItemStatus.NotAttempted)
@@ -886,6 +919,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             lines.Add(string.Empty);
             lines.Add($"Deleted equivalent source copies ({deleted.Length:N0}):");
             lines.AddRange(deleted.Select(static item => item.Entry.SourceRelativePath));
+        }
+
+        if (skipped.Length > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add($"Skipped destination conflicts ({skipped.Length:N0}):");
+            lines.AddRange(skipped.Select(static item => item.Entry.SourceRelativePath));
         }
 
         if (failed is not null)
@@ -911,35 +951,82 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         MovePreflightResult preflight)
     {
         var equivalent = preflight.EquivalentDestinationEntries;
-        if (equivalent.Count == 0)
+        var conflicts = preflight.ConflictingDestinationEntries;
+        if (equivalent.Count == 0 && conflicts.Count == 0)
         {
             return $"Move {plan.Entries.Count:N0} files to "
                 + $"'{plan.DestinationDirectoryRelativePath}'? "
                 + "Existing files will never be overwritten. There is no undo or automatic rollback.";
         }
 
-        var moveCount = plan.Entries.Count - equivalent.Count;
-        var action = moveCount == 0
-            ? $"Delete the {equivalent.Count:N0} source copies?"
-            : $"Delete those source copies and move the other {moveCount:N0} files?";
-        var names = equivalent
-            .Take(8)
-            .Select(static entry => $"- {Path.GetFileName(entry.SourceRelativePath)}")
-            .ToList();
-        if (equivalent.Count > names.Count)
+        var moveCount = plan.Entries.Count - equivalent.Count - conflicts.Count;
+        var sections = new List<string>();
+        if (equivalent.Count > 0)
         {
-            names.Add($"- ...and {equivalent.Count - names.Count:N0} more");
+            sections.Add(
+                $"{equivalent.Count:N0} destination files match by name, size, and modified date/time. "
+                + "Their source copies will be deleted.");
         }
 
-        return $"{equivalent.Count:N0} files already exist in "
-            + $"'{plan.DestinationDirectoryRelativePath}' with matching names, sizes, and modified dates/times."
+        if (conflicts.Count > 0)
+        {
+            sections.Add(
+                $"{conflicts.Count:N0} source files belong to items with same-name destination "
+                + "conflicts. Those items will be skipped.");
+        }
+
+        sections.Add(
+            $"Move {moveCount:N0}, delete {equivalent.Count:N0}, and skip {conflicts.Count:N0} files?");
+        return $"Destination: '{plan.DestinationDirectoryRelativePath}'"
             + Environment.NewLine
             + Environment.NewLine
-            + string.Join(Environment.NewLine, names)
-            + Environment.NewLine
-            + Environment.NewLine
-            + action
+            + string.Join(Environment.NewLine + Environment.NewLine, sections)
             + " The destination copies will not be changed. There is no undo or automatic rollback.";
+    }
+
+    private static string GetMoveConfirmationTitle(int equivalentCount, int conflictCount)
+    {
+        if (equivalentCount > 0 && conflictCount > 0)
+        {
+            return "Resolve existing destination files";
+        }
+
+        if (equivalentCount > 0)
+        {
+            return "Delete equivalent source files";
+        }
+
+        return conflictCount > 0
+            ? "Skip conflicting files"
+            : "Name and move these photos";
+    }
+
+    private void ShowSkippedConflictSummary(MoveExecutionResult result)
+    {
+        var skipped = result.Items
+            .Where(static item => item.Status == MoveItemStatus.SkippedDestinationConflict)
+            .ToArray();
+        if (skipped.Length == 0)
+        {
+            return;
+        }
+
+        var paths = skipped
+            .Take(12)
+            .Select(static item => item.Entry.SourceRelativePath)
+            .ToList();
+        if (skipped.Length > paths.Count)
+        {
+            paths.Add($"...and {skipped.Length - paths.Count:N0} more");
+        }
+
+        _dialogs.ShowInformation(
+            "Conflicting files skipped",
+            $"{skipped.Length:N0} source files were left in place because their items have "
+            + "destination conflicts:"
+            + Environment.NewLine
+            + Environment.NewLine
+            + string.Join(Environment.NewLine, paths));
     }
 
     private static string CreateSuggestedFolderName(CandidateGroup candidate)
@@ -993,6 +1080,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (eventArgs.PropertyName == nameof(BundleViewModel.IsIncluded))
         {
             SaveCurrentDraft();
+            OnPropertyChanged(nameof(IncludedItemsSummary));
         }
     }
 

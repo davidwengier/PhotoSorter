@@ -29,7 +29,7 @@ public sealed class FileSystemMoveExecutorTests
     }
 
     [TestMethod]
-    public async Task PreflightAsync_DestinationAlreadyExists_ReportsError()
+    public async Task PreflightAsync_DestinationAlreadyExists_ReturnsConflict()
     {
         using var temp = new TempDirectory();
         var sourceDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Phone Images")).FullName;
@@ -43,10 +43,11 @@ public sealed class FileSystemMoveExecutorTests
 
         var preflight = await sut.PreflightAsync(plan);
 
-        Assert.IsFalse(preflight.IsValid);
+        Assert.IsTrue(preflight.IsValid);
+        Assert.IsEmpty(preflight.Errors);
         Assert.IsEmpty(preflight.EquivalentDestinationEntries);
-        Assert.IsTrue(preflight.Errors.Any(error =>
-            error.Contains("does not match the source", StringComparison.Ordinal)));
+        Assert.HasCount(1, preflight.ConflictingDestinationEntries);
+        Assert.AreSame(entry, preflight.ConflictingDestinationEntries[0]);
     }
 
     [TestMethod]
@@ -94,7 +95,7 @@ public sealed class FileSystemMoveExecutorTests
     }
 
     [TestMethod]
-    public async Task PreflightAsync_SameNameAndSizeWithDifferentTimestamp_ReportsError()
+    public async Task PreflightAsync_SameNameAndSizeWithDifferentTimestamp_ReturnsConflict()
     {
         using var temp = new TempDirectory();
         var sourceDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Phone Images")).FullName;
@@ -112,10 +113,11 @@ public sealed class FileSystemMoveExecutorTests
 
         var preflight = await sut.PreflightAsync(plan);
 
-        Assert.IsFalse(preflight.IsValid);
+        Assert.IsTrue(preflight.IsValid);
+        Assert.IsEmpty(preflight.Errors);
         Assert.IsEmpty(preflight.EquivalentDestinationEntries);
-        Assert.IsTrue(preflight.Errors.Any(error =>
-            error.Contains("does not match the source", StringComparison.Ordinal)));
+        Assert.HasCount(1, preflight.ConflictingDestinationEntries);
+        Assert.AreSame(entry, preflight.ConflictingDestinationEntries[0]);
     }
 
     [TestMethod]
@@ -168,6 +170,109 @@ public sealed class FileSystemMoveExecutorTests
     }
 
     [TestMethod]
+    public async Task ExecuteAsync_DestinationConflictWithSkipApproval_LeavesSourceInPlace()
+    {
+        using var temp = new TempDirectory();
+        var sourceDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Phone Images")).FullName;
+        var sourcePath = Path.Combine(sourceDir, "a.jpg");
+        await File.WriteAllTextAsync(sourcePath, "source");
+        var destinationDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Trip")).FullName;
+        var destinationPath = Path.Combine(destinationDir, "a.jpg");
+        await File.WriteAllTextAsync(destinationPath, "different-destination");
+        var entry = CreateEntry(sourcePath, "bundle-a", @"2023\Phone Images\a.jpg", @"2023\Trip\a.jpg");
+        var plan = CreatePlan(temp.Path, @"2023\Trip", [entry]);
+        var sut = new FileSystemMoveExecutor();
+
+        var result = await sut.ExecuteAsync(
+            plan,
+            new MoveExecutionOptions { SkipDestinationConflicts = true });
+
+        Assert.IsTrue(result.Succeeded);
+        Assert.AreEqual(MoveItemStatus.SkippedDestinationConflict, result.Items[0].Status);
+        Assert.IsTrue(File.Exists(sourcePath));
+        Assert.AreEqual("different-destination", await File.ReadAllTextAsync(destinationPath));
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_MixedDestinationConflictAndMove_SkipsConflictAndMovesRest()
+    {
+        using var temp = new TempDirectory();
+        var sourceDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Phone Images")).FullName;
+        var conflictSourcePath = Path.Combine(sourceDir, "a.jpg");
+        var movedSourcePath = Path.Combine(sourceDir, "b.jpg");
+        await File.WriteAllTextAsync(conflictSourcePath, "source-a");
+        await File.WriteAllTextAsync(movedSourcePath, "source-b");
+        var destinationDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Trip")).FullName;
+        var conflictDestinationPath = Path.Combine(destinationDir, "a.jpg");
+        await File.WriteAllTextAsync(conflictDestinationPath, "different-a");
+        var conflictEntry = CreateEntry(
+            conflictSourcePath,
+            "bundle-a",
+            @"2023\Phone Images\a.jpg",
+            @"2023\Trip\a.jpg");
+        var movedEntry = CreateEntry(
+            movedSourcePath,
+            "bundle-b",
+            @"2023\Phone Images\b.jpg",
+            @"2023\Trip\b.jpg");
+        var plan = CreatePlan(temp.Path, @"2023\Trip", [conflictEntry, movedEntry]);
+        var sut = new FileSystemMoveExecutor();
+
+        var result = await sut.ExecuteAsync(
+            plan,
+            new MoveExecutionOptions { SkipDestinationConflicts = true });
+
+        Assert.IsTrue(result.Succeeded);
+        Assert.AreEqual(MoveItemStatus.SkippedDestinationConflict, result.Items[0].Status);
+        Assert.AreEqual(MoveItemStatus.Moved, result.Items[1].Status);
+        Assert.IsTrue(File.Exists(conflictSourcePath));
+        Assert.IsFalse(File.Exists(movedSourcePath));
+        Assert.AreEqual("different-a", await File.ReadAllTextAsync(conflictDestinationPath));
+        Assert.AreEqual(
+            "source-b",
+            await File.ReadAllTextAsync(Path.Combine(destinationDir, "b.jpg")));
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_OneFileInBundleConflicts_SkipsEntireLinkedBundle()
+    {
+        using var temp = new TempDirectory();
+        var sourceDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Phone Images")).FullName;
+        var imageSourcePath = Path.Combine(sourceDir, "a.jpg");
+        var sidecarSourcePath = Path.Combine(sourceDir, "a.xmp");
+        await File.WriteAllTextAsync(imageSourcePath, "source-image");
+        await File.WriteAllTextAsync(sidecarSourcePath, "source-sidecar");
+        var destinationDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Trip")).FullName;
+        var imageDestinationPath = Path.Combine(destinationDir, "a.jpg");
+        await File.WriteAllTextAsync(imageDestinationPath, "different-image");
+        var imageEntry = CreateEntry(
+            imageSourcePath,
+            "linked-bundle",
+            @"2023\Phone Images\a.jpg",
+            @"2023\Trip\a.jpg");
+        var sidecarEntry = CreateEntry(
+            sidecarSourcePath,
+            "linked-bundle",
+            @"2023\Phone Images\a.xmp",
+            @"2023\Trip\a.xmp");
+        var plan = CreatePlan(temp.Path, @"2023\Trip", [imageEntry, sidecarEntry]);
+        var sut = new FileSystemMoveExecutor();
+
+        var preflight = await sut.PreflightAsync(plan);
+        var result = await sut.ExecuteAsync(
+            plan,
+            new MoveExecutionOptions { SkipDestinationConflicts = true });
+
+        Assert.HasCount(2, preflight.ConflictingDestinationEntries);
+        Assert.IsTrue(result.Succeeded);
+        Assert.IsTrue(result.Items.All(static item =>
+            item.Status == MoveItemStatus.SkippedDestinationConflict));
+        Assert.IsTrue(File.Exists(imageSourcePath));
+        Assert.IsTrue(File.Exists(sidecarSourcePath));
+        Assert.IsFalse(File.Exists(Path.Combine(destinationDir, "a.xmp")));
+    }
+
+    [TestMethod]
     public async Task ExecuteAsync_MixedMoveAndEquivalentDestination_CompletesBothActions()
     {
         using var temp = new TempDirectory();
@@ -215,8 +320,10 @@ public sealed class FileSystemMoveExecutorTests
         var sourceDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Phone Images")).FullName;
         var movedSourcePath = Path.Combine(sourceDir, "a.jpg");
         var duplicateSourcePath = Path.Combine(sourceDir, "b.jpg");
+        var linkedSourcePath = Path.Combine(sourceDir, "b.xmp");
         await File.WriteAllTextAsync(movedSourcePath, "new-content");
         await File.WriteAllTextAsync(duplicateSourcePath, "same-content");
+        await File.WriteAllTextAsync(linkedSourcePath, "linked-content");
         var destinationDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Trip")).FullName;
         var duplicateDestinationPath = Path.Combine(destinationDir, "b.jpg");
         await File.WriteAllTextAsync(duplicateDestinationPath, "same-content");
@@ -231,7 +338,12 @@ public sealed class FileSystemMoveExecutorTests
             "bundle-b",
             @"2023\Phone Images\b.jpg",
             @"2023\Trip\b.jpg");
-        var plan = CreatePlan(temp.Path, @"2023\Trip", [movedEntry, duplicateEntry]);
+        var linkedEntry = CreateEntry(
+            linkedSourcePath,
+            "bundle-b",
+            @"2023\Phone Images\b.xmp",
+            @"2023\Trip\b.xmp");
+        var plan = CreatePlan(temp.Path, @"2023\Trip", [movedEntry, duplicateEntry, linkedEntry]);
         var changedWriteTime = File.GetLastWriteTimeUtc(duplicateDestinationPath).AddMinutes(1);
         var progress = new CallbackProgress<int>(
             _ => File.SetLastWriteTimeUtc(duplicateDestinationPath, changedWriteTime));
@@ -239,14 +351,21 @@ public sealed class FileSystemMoveExecutorTests
 
         var result = await sut.ExecuteAsync(
             plan,
-            new MoveExecutionOptions { DeleteEquivalentSources = true },
+            new MoveExecutionOptions
+            {
+                DeleteEquivalentSources = true,
+                SkipDestinationConflicts = true,
+            },
             progress);
 
-        Assert.IsFalse(result.Succeeded);
+        Assert.IsTrue(result.Succeeded);
         Assert.AreEqual(MoveItemStatus.Moved, result.Items[0].Status);
-        Assert.AreEqual(MoveItemStatus.Failed, result.Items[1].Status);
+        Assert.AreEqual(MoveItemStatus.SkippedDestinationConflict, result.Items[1].Status);
+        Assert.AreEqual(MoveItemStatus.SkippedDestinationConflict, result.Items[2].Status);
         Assert.IsTrue(File.Exists(duplicateSourcePath));
+        Assert.IsTrue(File.Exists(linkedSourcePath));
         Assert.IsTrue(File.Exists(duplicateDestinationPath));
+        Assert.IsFalse(File.Exists(Path.Combine(destinationDir, "b.xmp")));
     }
 
     [TestMethod]
