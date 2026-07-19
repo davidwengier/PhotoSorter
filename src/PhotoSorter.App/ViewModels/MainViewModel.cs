@@ -383,11 +383,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var equivalentCount = preflight.EquivalentDestinationEntries.Count;
         if (!_dialogs.Confirm(
-                "Name and move these photos",
-                $"Move {plan.Entries.Count:N0} files to "
-                + $"'{plan.DestinationDirectoryRelativePath}'? "
-                + "Existing files will never be overwritten. There is no undo or automatic rollback."))
+                equivalentCount > 0
+                    ? "Delete equivalent source files"
+                    : "Name and move these photos",
+                BuildMoveConfirmationMessage(plan, preflight)))
         {
             return;
         }
@@ -395,14 +396,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         IsBusy = true;
         try
         {
-            StatusMessage = $"Moving {candidate.Title}…";
+            StatusMessage = $"Organizing {candidate.Title}…";
             var result = await _moveExecutor.ExecuteAsync(
                 plan,
+                new MoveExecutionOptions
+                {
+                    DeleteEquivalentSources = equivalentCount > 0,
+                },
                 new Progress<int>(value => ProgressPercent = value));
 
             if (!result.Succeeded)
             {
-                _dialogs.ShowError("Move stopped", BuildMoveFailureMessage(result));
+                _dialogs.ShowError("Operation stopped", BuildMoveFailureMessage(result));
             }
         }
         finally
@@ -857,9 +862,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         var lines = new List<string>
         {
-            "The move stopped at the first failure. Files already moved remain moved.",
+            "The operation stopped at the first failure. Files already moved or deleted remain changed.",
         };
         var moved = result.Items.Where(static item => item.Status == MoveItemStatus.Moved).ToArray();
+        var deleted = result.Items
+            .Where(static item => item.Status == MoveItemStatus.DeletedEquivalentSource)
+            .ToArray();
         var failed = result.Items.FirstOrDefault(static item => item.Status == MoveItemStatus.Failed);
         var notAttempted = result.Items
             .Where(static item => item.Status == MoveItemStatus.NotAttempted)
@@ -873,12 +881,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 $"{item.Entry.SourceRelativePath} -> {item.Entry.DestinationRelativePath}"));
         }
 
+        if (deleted.Length > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add($"Deleted equivalent source copies ({deleted.Length:N0}):");
+            lines.AddRange(deleted.Select(static item => item.Entry.SourceRelativePath));
+        }
+
         if (failed is not null)
         {
             lines.Add(string.Empty);
             lines.Add("Failed:");
             lines.Add(failed.Entry.SourceRelativePath);
-            lines.Add(failed.Error ?? "The file could not be moved.");
+            lines.Add(failed.Error ?? "The file could not be processed.");
         }
 
         if (notAttempted.Length > 0)
@@ -889,6 +904,42 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string BuildMoveConfirmationMessage(
+        MovePlan plan,
+        MovePreflightResult preflight)
+    {
+        var equivalent = preflight.EquivalentDestinationEntries;
+        if (equivalent.Count == 0)
+        {
+            return $"Move {plan.Entries.Count:N0} files to "
+                + $"'{plan.DestinationDirectoryRelativePath}'? "
+                + "Existing files will never be overwritten. There is no undo or automatic rollback.";
+        }
+
+        var moveCount = plan.Entries.Count - equivalent.Count;
+        var action = moveCount == 0
+            ? $"Delete the {equivalent.Count:N0} source copies?"
+            : $"Delete those source copies and move the other {moveCount:N0} files?";
+        var names = equivalent
+            .Take(8)
+            .Select(static entry => $"- {Path.GetFileName(entry.SourceRelativePath)}")
+            .ToList();
+        if (equivalent.Count > names.Count)
+        {
+            names.Add($"- ...and {equivalent.Count - names.Count:N0} more");
+        }
+
+        return $"{equivalent.Count:N0} files already exist in "
+            + $"'{plan.DestinationDirectoryRelativePath}' with matching names, sizes, and modified dates/times."
+            + Environment.NewLine
+            + Environment.NewLine
+            + string.Join(Environment.NewLine, names)
+            + Environment.NewLine
+            + Environment.NewLine
+            + action
+            + " The destination copies will not be changed. There is no undo or automatic rollback.";
     }
 
     private static string CreateSuggestedFolderName(CandidateGroup candidate)

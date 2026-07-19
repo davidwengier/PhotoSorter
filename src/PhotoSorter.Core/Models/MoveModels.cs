@@ -35,12 +35,20 @@ public sealed record MovePreflightResult
 {
     public required IReadOnlyList<string> Errors { get; init; }
 
+    public IReadOnlyList<MovePlanEntry> EquivalentDestinationEntries { get; init; } = [];
+
     public bool IsValid => Errors.Count == 0;
+}
+
+public sealed record MoveExecutionOptions
+{
+    public bool DeleteEquivalentSources { get; init; }
 }
 
 public enum MoveItemStatus
 {
     Moved,
+    DeletedEquivalentSource,
     Failed,
     NotAttempted,
 }
@@ -58,5 +66,7 @@ public sealed record MoveExecutionResult
 {
     public required IReadOnlyList<MoveItemResult> Items { get; init; }
 
-    public bool Succeeded => Items.Count > 0 && Items.All(static item => item.Status == MoveItemStatus.Moved);
+    public bool Succeeded => Items.Count > 0
+        && Items.All(static item => item.Status is MoveItemStatus.Moved
+            or MoveItemStatus.DeletedEquivalentSource);
 }

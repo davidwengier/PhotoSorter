@@ -20,8 +20,8 @@ It clusters photos and linked media using capture time and GPS metadata. Suggest
 - Switches each photo group between a detailed list and an image-only grid.
 - Remembers the large viewer's size, position, and maximized state in the disposable machine-local cache.
 - Supports new or existing year-level destination folders.
-- Never overwrites an existing file.
-- Stops at the first move failure and reports moved, failed, and unattempted files.
+- Never overwrites an existing file. When a destination file has the same name, size, and modified timestamp, it can delete the equivalent source copy after explicit confirmation.
+- Stops at the first move failure and reports moved, deleted, failed, and unattempted files.
 - Has no move history, undo, rollback, or crash-recovery system.
 
 ## Shared decisions

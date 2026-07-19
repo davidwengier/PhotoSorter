@@ -44,7 +44,9 @@ public sealed class FileSystemMoveExecutorTests
         var preflight = await sut.PreflightAsync(plan);
 
         Assert.IsFalse(preflight.IsValid);
-        Assert.IsTrue(preflight.Errors.Any(error => error.Contains("Destination already exists", StringComparison.Ordinal)));
+        Assert.IsEmpty(preflight.EquivalentDestinationEntries);
+        Assert.IsTrue(preflight.Errors.Any(error =>
+            error.Contains("does not match the source", StringComparison.Ordinal)));
     }
 
     [TestMethod]
@@ -67,6 +69,184 @@ public sealed class FileSystemMoveExecutorTests
         Assert.AreEqual(MoveItemStatus.Failed, result.Items[0].Status);
         Assert.IsTrue(File.Exists(sourcePath));
         Assert.AreEqual("already-here", await File.ReadAllTextAsync(destinationPath));
+    }
+
+    [TestMethod]
+    public async Task PreflightAsync_EquivalentDestination_ReturnsSourceDeletionCandidate()
+    {
+        using var temp = new TempDirectory();
+        var sourceDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Phone Images")).FullName;
+        var sourcePath = Path.Combine(sourceDir, "a.jpg");
+        await File.WriteAllTextAsync(sourcePath, "same-content");
+        var destinationDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Trip")).FullName;
+        var destinationPath = Path.Combine(destinationDir, "a.jpg");
+        await File.WriteAllTextAsync(destinationPath, "same-content");
+        SetMatchingWriteTimes(sourcePath, destinationPath);
+        var entry = CreateEntry(sourcePath, "bundle-a", @"2023\Phone Images\a.jpg", @"2023\Trip\a.jpg");
+        var plan = CreatePlan(temp.Path, @"2023\Trip", [entry]);
+        var sut = new FileSystemMoveExecutor();
+
+        var preflight = await sut.PreflightAsync(plan);
+
+        Assert.IsTrue(preflight.IsValid);
+        Assert.HasCount(1, preflight.EquivalentDestinationEntries);
+        Assert.AreSame(entry, preflight.EquivalentDestinationEntries[0]);
+    }
+
+    [TestMethod]
+    public async Task PreflightAsync_SameNameAndSizeWithDifferentTimestamp_ReportsError()
+    {
+        using var temp = new TempDirectory();
+        var sourceDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Phone Images")).FullName;
+        var sourcePath = Path.Combine(sourceDir, "a.jpg");
+        await File.WriteAllTextAsync(sourcePath, "same-content");
+        var destinationDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Trip")).FullName;
+        var destinationPath = Path.Combine(destinationDir, "a.jpg");
+        await File.WriteAllTextAsync(destinationPath, "same-content");
+        var sourceTime = new DateTime(2023, 6, 1, 10, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(sourcePath, sourceTime);
+        File.SetLastWriteTimeUtc(destinationPath, sourceTime.AddSeconds(1));
+        var entry = CreateEntry(sourcePath, "bundle-a", @"2023\Phone Images\a.jpg", @"2023\Trip\a.jpg");
+        var plan = CreatePlan(temp.Path, @"2023\Trip", [entry]);
+        var sut = new FileSystemMoveExecutor();
+
+        var preflight = await sut.PreflightAsync(plan);
+
+        Assert.IsFalse(preflight.IsValid);
+        Assert.IsEmpty(preflight.EquivalentDestinationEntries);
+        Assert.IsTrue(preflight.Errors.Any(error =>
+            error.Contains("does not match the source", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_EquivalentDestinationWithoutApproval_LeavesSourceInPlace()
+    {
+        using var temp = new TempDirectory();
+        var sourceDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Phone Images")).FullName;
+        var sourcePath = Path.Combine(sourceDir, "a.jpg");
+        await File.WriteAllTextAsync(sourcePath, "same-content");
+        var destinationDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Trip")).FullName;
+        var destinationPath = Path.Combine(destinationDir, "a.jpg");
+        await File.WriteAllTextAsync(destinationPath, "same-content");
+        SetMatchingWriteTimes(sourcePath, destinationPath);
+        var entry = CreateEntry(sourcePath, "bundle-a", @"2023\Phone Images\a.jpg", @"2023\Trip\a.jpg");
+        var plan = CreatePlan(temp.Path, @"2023\Trip", [entry]);
+        var sut = new FileSystemMoveExecutor();
+
+        var result = await sut.ExecuteAsync(plan);
+
+        Assert.IsFalse(result.Succeeded);
+        Assert.AreEqual(MoveItemStatus.Failed, result.Items[0].Status);
+        Assert.IsTrue(File.Exists(sourcePath));
+        Assert.IsTrue(File.Exists(destinationPath));
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_EquivalentDestinationWithApproval_DeletesOnlySource()
+    {
+        using var temp = new TempDirectory();
+        var sourceDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Phone Images")).FullName;
+        var sourcePath = Path.Combine(sourceDir, "a.jpg");
+        await File.WriteAllTextAsync(sourcePath, "same-content");
+        var destinationDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Trip")).FullName;
+        var destinationPath = Path.Combine(destinationDir, "a.jpg");
+        await File.WriteAllTextAsync(destinationPath, "same-content");
+        SetMatchingWriteTimes(sourcePath, destinationPath);
+        var entry = CreateEntry(sourcePath, "bundle-a", @"2023\Phone Images\a.jpg", @"2023\Trip\a.jpg");
+        var plan = CreatePlan(temp.Path, @"2023\Trip", [entry]);
+        var sut = new FileSystemMoveExecutor();
+
+        var result = await sut.ExecuteAsync(
+            plan,
+            new MoveExecutionOptions { DeleteEquivalentSources = true });
+
+        Assert.IsTrue(result.Succeeded);
+        Assert.AreEqual(MoveItemStatus.DeletedEquivalentSource, result.Items[0].Status);
+        Assert.IsFalse(File.Exists(sourcePath));
+        Assert.IsTrue(File.Exists(destinationPath));
+        Assert.AreEqual("same-content", await File.ReadAllTextAsync(destinationPath));
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_MixedMoveAndEquivalentDestination_CompletesBothActions()
+    {
+        using var temp = new TempDirectory();
+        var sourceDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Phone Images")).FullName;
+        var duplicateSourcePath = Path.Combine(sourceDir, "a.jpg");
+        var movedSourcePath = Path.Combine(sourceDir, "b.jpg");
+        await File.WriteAllTextAsync(duplicateSourcePath, "same-content");
+        await File.WriteAllTextAsync(movedSourcePath, "new-content");
+        var destinationDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Trip")).FullName;
+        var duplicateDestinationPath = Path.Combine(destinationDir, "a.jpg");
+        await File.WriteAllTextAsync(duplicateDestinationPath, "same-content");
+        SetMatchingWriteTimes(duplicateSourcePath, duplicateDestinationPath);
+        var duplicateEntry = CreateEntry(
+            duplicateSourcePath,
+            "bundle-a",
+            @"2023\Phone Images\a.jpg",
+            @"2023\Trip\a.jpg");
+        var movedEntry = CreateEntry(
+            movedSourcePath,
+            "bundle-b",
+            @"2023\Phone Images\b.jpg",
+            @"2023\Trip\b.jpg");
+        var plan = CreatePlan(temp.Path, @"2023\Trip", [duplicateEntry, movedEntry]);
+        var sut = new FileSystemMoveExecutor();
+
+        var result = await sut.ExecuteAsync(
+            plan,
+            new MoveExecutionOptions { DeleteEquivalentSources = true });
+
+        Assert.IsTrue(result.Succeeded);
+        Assert.AreEqual(MoveItemStatus.DeletedEquivalentSource, result.Items[0].Status);
+        Assert.AreEqual(MoveItemStatus.Moved, result.Items[1].Status);
+        Assert.IsFalse(File.Exists(duplicateSourcePath));
+        Assert.IsFalse(File.Exists(movedSourcePath));
+        Assert.IsTrue(File.Exists(duplicateDestinationPath));
+        Assert.AreEqual(
+            "new-content",
+            await File.ReadAllTextAsync(Path.Combine(destinationDir, "b.jpg")));
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_EquivalentDestinationChangesAfterPreflight_LeavesSourceInPlace()
+    {
+        using var temp = new TempDirectory();
+        var sourceDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Phone Images")).FullName;
+        var movedSourcePath = Path.Combine(sourceDir, "a.jpg");
+        var duplicateSourcePath = Path.Combine(sourceDir, "b.jpg");
+        await File.WriteAllTextAsync(movedSourcePath, "new-content");
+        await File.WriteAllTextAsync(duplicateSourcePath, "same-content");
+        var destinationDir = Directory.CreateDirectory(Path.Combine(temp.Path, "2023", "Trip")).FullName;
+        var duplicateDestinationPath = Path.Combine(destinationDir, "b.jpg");
+        await File.WriteAllTextAsync(duplicateDestinationPath, "same-content");
+        SetMatchingWriteTimes(duplicateSourcePath, duplicateDestinationPath);
+        var movedEntry = CreateEntry(
+            movedSourcePath,
+            "bundle-a",
+            @"2023\Phone Images\a.jpg",
+            @"2023\Trip\a.jpg");
+        var duplicateEntry = CreateEntry(
+            duplicateSourcePath,
+            "bundle-b",
+            @"2023\Phone Images\b.jpg",
+            @"2023\Trip\b.jpg");
+        var plan = CreatePlan(temp.Path, @"2023\Trip", [movedEntry, duplicateEntry]);
+        var changedWriteTime = File.GetLastWriteTimeUtc(duplicateDestinationPath).AddMinutes(1);
+        var progress = new CallbackProgress<int>(
+            _ => File.SetLastWriteTimeUtc(duplicateDestinationPath, changedWriteTime));
+        var sut = new FileSystemMoveExecutor();
+
+        var result = await sut.ExecuteAsync(
+            plan,
+            new MoveExecutionOptions { DeleteEquivalentSources = true },
+            progress);
+
+        Assert.IsFalse(result.Succeeded);
+        Assert.AreEqual(MoveItemStatus.Moved, result.Items[0].Status);
+        Assert.AreEqual(MoveItemStatus.Failed, result.Items[1].Status);
+        Assert.IsTrue(File.Exists(duplicateSourcePath));
+        Assert.IsTrue(File.Exists(duplicateDestinationPath));
     }
 
     [TestMethod]
@@ -239,4 +419,16 @@ public sealed class FileSystemMoveExecutorTests
             DestinationDirectoryRelativePath = destinationDirectoryRelativePath,
             Entries = entries,
         };
+
+    private static void SetMatchingWriteTimes(string sourcePath, string destinationPath)
+    {
+        var writeTime = new DateTime(2023, 6, 1, 10, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(sourcePath, writeTime);
+        File.SetLastWriteTimeUtc(destinationPath, writeTime);
+    }
+
+    private sealed class CallbackProgress<T>(Action<T> callback) : IProgress<T>
+    {
+        public void Report(T value) => callback(value);
+    }
 }

@@ -70,6 +70,7 @@ public interface IMoveExecutor
 
     Task<MoveExecutionResult> ExecuteAsync(
         MovePlan plan,
+        MoveExecutionOptions? options = null,
         IProgress<int>? progress = null,
         CancellationToken cancellationToken = default);
 }
